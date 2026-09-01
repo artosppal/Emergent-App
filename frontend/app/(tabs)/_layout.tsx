@@ -64,6 +64,19 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="groups"
+        options={{
+          title: "Grup",
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              name={focused ? "account-group" : "account-group-outline"}
+              color={color}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="account"
         options={{
           title: "Akun",

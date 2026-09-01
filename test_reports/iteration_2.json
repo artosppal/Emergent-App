@@ -1,0 +1,54 @@
+{
+  "summary": "Notifin FASE 2 (Family/Team Groups + service presets + dashboard 'Sorotan boros') tested end-to-end. Backend: 19/19 new group + dashboard highlight tests pass (100%). Combined with FASE 1 regression suite, 37/37 pytest cases pass. All contract requirements verified: premium gating on POST /api/groups (403 code=premium_required), join case-insensitive + 404 + 409, list/detail shapes (member_count, sub_count, my_share, splits, unpaid_members, my_total), owner-only sub CRUD (403 for member), equal + custom split types, pay-self ok, pay-other-as-member 403, pay-anyone-as-owner ok, owner-leave 400, member-leave 200, owner-delete-only 403, dashboard.most_expensive normalized to monthly (yearly 1.2M -> 100k/mo), ending_trials filter 0-14 days with days_left >= 0. Frontend (mobile 390x844): Grup tab renders in bottom nav; free user tapping 'Buat Grup' correctly triggers UpgradeSheet (screenshot verified); premium user (via mock /auth/upgrade) creates group via modal (group-name-input + modal-submit-button), lands on /group/[id] showing invite code + Bagikan + Koordinator badge; group detail 'Tambah' opens /group/add-sub, preset-Netflix chip autofills, save-group-sub-button persists sub, splits render with '1 belum bayar' indicator on unpaid rows; personal /subscription/form 'Pilihan cepat' section shows preset chips — clicking preset-Netflix autofills name='Netflix' and price='186000'; dashboard 'Sorotan boros' shows most-expensive-card (with monthly_cost) and trial-warning-{id} card ('berakhir 5 hari lagi'); 'Gabung Kode' modal opens with group-code-input + modal-submit-button. No red-screen errors. Existing pre-known warnings only ('shadow*' deprecated, pointerEvents deprecated, React 19 element.ref message from libs) — carry-over from iteration 1, not introduced by FASE 2.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/groups/{gid}",
+        "issue": "advance_group_sub() runs during read requests and MUTATES next_due_date+resets payments effectively (payments dict is keyed by period). This means a coordinator opening the group detail after due date will silently roll subs forward without any audit trail. Suggest logging period rollovers and/or moving auto-advance into a scheduled job so reads are pure. Not blocking spec but surprising for future 'payment history' feature."
+      },
+      {
+        "endpoint": "server.py:advance_group_sub (line ~478)",
+        "issue": "While-loop can theoretically run many iterations if a very old due_date exists (e.g. 5 years). Not a security issue given weekly/monthly/yearly cycles but consider a max-iterations guard."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": [
+        "Carry-over from iteration 1 (not FASE 2 regression): 'shadow*' style props deprecation warnings in react-native-web; consider migrating theme shadow.card/shadow.soft to boxShadow.",
+        "React 19 warning 'Accessing element.ref was removed' appears once when opening the UpgradeSheet — likely originates from @gorhom/bottom-sheet. Non-blocking but pin/upgrade the lib once compatible."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_notifin_groups.py",
+    "/app/backend/tests/test_notifin_backend.py",
+    "/app/test_reports/pytest/pytest_groups.xml",
+    "/app/test_reports/pytest/pytest_all.xml"
+  ],
+  "action_items": [
+    "OPTIONAL (minor): audit-log payment rollovers when advance_group_sub() bumps next_due_date so future 'billing history' feature has data.",
+    "OPTIONAL (minor cleanup): migrate deprecated `shadow*` theme tokens to `boxShadow` in /app/frontend/src/theme.ts (carried over from iteration 1).",
+    "NOTE for future test agents: /app/backend/tests/test_notifin_groups.py must run with `-n 0` (serial). Tests share state across classes (invite codes / sub ids) and the project pytest.ini default `-n 2 --dist loadscope` splits classes across workers. A module-level `pytest.mark.xdist_group` is set but only respected under `--dist loadgroup`, not `loadscope`."
+  ],
+  "critical_code_review_comments": [
+    "server.py get_group_for_member() correctly separates 404 vs 403 (group missing vs not-a-member) — good.",
+    "server.py compute_splits() rounds each split independently — total rounded splits may not sum to price exactly for equal(price/n) with prices not divisible by n. Cosmetic only.",
+    "server.py delete_group(): hard-deletes group + group_subscriptions with delete_many. No audit / undo. Group subs are hard-deleted while personal subs are soft-deleted — inconsistent pattern (fine for MVP).",
+    "server.py pay_group_sub(): stores payments as `payments.{period}.{user_id}: true`. When advance_group_sub() rolls next_due_date forward, the old period's payments remain in the doc (never GC'd). Storage bloat over years but negligible for MVP.",
+    "frontend group/[id].tsx: 'Total grup' Rp uses group total_price which is sum(price). For a solo-owner group this equals owner's share — display is technically correct but could be confusing UX. Not a bug."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_notifin_groups.py (new — 19 tests covering groups + dashboard highlights)"
+  ],
+  "success_rate": {"backend": "100% (19/19 new; 37/37 combined with regression)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "Tests create ephemeral users via /api/auth/register (test_owner_*, test_member_*, test_outsider_*, test_dashuser_*, test_free_creator_*). No cleanup done on backend groups collection (fresh IDs each run). Frontend tests also created UI_TestGrup + UI_Expensive + UI_TrialSoon on ephemeral fe_prem_* / fe_last_* users.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "FASE 2 (Groups + presets + Sorotan boros) fully verified. If backend group tests are re-run: use `pytest backend/tests/test_notifin_groups.py -n 0` because tests share state across classes and default `--dist loadscope` will fail. Testable premium users: use POST /api/auth/upgrade after register to flip plan to premium. Container date is ~2026-09-01 — use `today + N days` for future dates. Login testID: submit-button. Web preview forces YYYY-MM-DD text input for due_date (not the native picker). Push notifications remain out of scope (placeholder key, register-push returns {status:'skipped'} per iter 1 fix).",
+  "rca_of_issue": "None — all requested FASE 2 scenarios pass. Only minor observation: advance_group_sub() mutating docs during GET requests is unusual (side-effect-on-read); documented under backend_issues.minor for future audit-log feature."
+}

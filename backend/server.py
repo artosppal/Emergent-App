@@ -5,6 +5,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import uuid
+import secrets
+import calendar
 import bcrypt
 import jwt
 import httpx
@@ -383,12 +385,18 @@ async def dashboard(user: dict = Depends(get_current_user)):
     total_monthly = 0.0
     by_cat: dict = {}
     upcoming = []
+    ending_trials = []
+    most_exp = None
+    most_exp_cost = 0.0
     today = date.today()
     horizon = today + timedelta(days=7)
 
     for d in docs:
         m = monthly_cost(d)
         total_monthly += m
+        if m > most_exp_cost:
+            most_exp_cost = m
+            most_exp = d
         cat = d.get("category", "other")
         by_cat.setdefault(cat, {"category": cat, "total": 0.0, "count": 0})
         by_cat[cat]["total"] += m
@@ -405,8 +413,13 @@ async def dashboard(user: dict = Depends(get_current_user)):
                 pub = sub_public(d)
                 pub["days_left"] = days_left
                 upcoming.append(pub)
+            if d.get("status") == "trial" and 0 <= days_left <= 14:
+                pub = sub_public(d)
+                pub["days_left"] = days_left
+                ending_trials.append(pub)
 
     upcoming.sort(key=lambda x: x.get("days_left", 99))
+    ending_trials.sort(key=lambda x: x.get("days_left", 99))
     by_category = sorted(by_cat.values(), key=lambda x: x["total"], reverse=True)
 
     return {
@@ -416,11 +429,337 @@ async def dashboard(user: dict = Depends(get_current_user)):
         "plan": user.get("plan", "free"),
         "free_limit": FREE_PLAN_LIMIT,
         "upcoming": upcoming,
+        "most_expensive": (
+            {**sub_public(most_exp), "monthly_cost": round(most_exp_cost)}
+            if most_exp is not None and most_exp_cost > 0 else None
+        ),
+        "ending_trials": ending_trials,
         "by_category": [
             {"category": c["category"], "total": round(c["total"]), "count": c["count"]}
             for c in by_category
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Fase 2: Groups (Family/Team Sharing)
+# ---------------------------------------------------------------------------
+CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
+def gen_invite_code() -> str:
+    return "".join(secrets.choice(CODE_ALPHABET) for _ in range(6))
+
+
+def add_cycle(d: date, cycle: str) -> date:
+    if cycle == "weekly":
+        return d + timedelta(days=7)
+    if cycle == "yearly":
+        try:
+            return d.replace(year=d.year + 1)
+        except ValueError:
+            return d.replace(year=d.year + 1, day=28)
+    y, m = d.year, d.month + 1
+    if m > 12:
+        y, m = y + 1, 1
+    day = min(d.day, calendar.monthrange(y, m)[1])
+    return date(y, m, day)
+
+
+async def advance_group_sub(s: dict) -> dict:
+    """Auto-advance due date past today; payments are keyed per due date so
+    statuses reset automatically each new billing period."""
+    try:
+        due = date.fromisoformat(s.get("next_due_date"))
+    except Exception:
+        return s
+    today = date.today()
+    changed = False
+    while due < today:
+        due = add_cycle(due, s.get("billing_cycle", "monthly"))
+        changed = True
+    if changed:
+        s["next_due_date"] = due.isoformat()
+        await db.group_subscriptions.update_one(
+            {"id": s["id"]}, {"$set": {"next_due_date": s["next_due_date"]}})
+    return s
+
+
+def compute_splits(s: dict, members: List[dict]) -> List[dict]:
+    period = s.get("next_due_date") or ""
+    payments = (s.get("payments") or {}).get(period, {})
+    splits = []
+    if s.get("split_type") == "custom":
+        cs = s.get("custom_splits") or {}
+        for m in members:
+            splits.append({
+                "user_id": m["user_id"],
+                "name": m.get("name") or "Anggota",
+                "amount": round(float(cs.get(m["user_id"], 0) or 0)),
+                "paid": bool(payments.get(m["user_id"])),
+            })
+    else:
+        n = max(len(members), 1)
+        share = float(s.get("price", 0) or 0) / n
+        for m in members:
+            splits.append({
+                "user_id": m["user_id"],
+                "name": m.get("name") or "Anggota",
+                "amount": round(share),
+                "paid": bool(payments.get(m["user_id"])),
+            })
+    return splits
+
+
+def group_sub_public(s: dict) -> dict:
+    return {
+        "id": s["id"],
+        "name": s["name"],
+        "category": s.get("category", "other"),
+        "price": s.get("price", 0),
+        "billing_cycle": s.get("billing_cycle", "monthly"),
+        "next_due_date": s.get("next_due_date"),
+        "split_type": s.get("split_type", "equal"),
+        "custom_splits": s.get("custom_splits"),
+        "created_at": s.get("created_at"),
+    }
+
+
+class GroupBody(BaseModel):
+    name: str
+
+
+class JoinBody(BaseModel):
+    code: str
+
+
+class GroupSubBody(BaseModel):
+    name: str
+    category: str = "other"
+    price: float = 0
+    billing_cycle: str = "monthly"
+    next_due_date: str
+    split_type: str = "equal"               # equal | custom
+    custom_splits: Optional[dict] = None    # {user_id: amount}
+
+
+class PayBody(BaseModel):
+    user_id: Optional[str] = None
+    paid: bool = True
+
+
+async def get_group_for_member(gid: str, user_id: str) -> dict:
+    g = await db.groups.find_one({"id": gid}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Grup tidak ditemukan")
+    if not any(m["user_id"] == user_id for m in g.get("members", [])):
+        raise HTTPException(status_code=403, detail="Kamu bukan anggota grup ini")
+    return g
+
+
+@api_router.post("/groups")
+async def create_group(body: GroupBody, user: dict = Depends(get_current_user)):
+    if user.get("plan", "free") != "premium":
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "premium_required",
+                    "message": "Buat grup adalah fitur Premium. Semua orang tetap bisa gabung lewat kode."},
+        )
+    if not body.name.strip():
+        raise HTTPException(status_code=422, detail="Nama grup wajib diisi")
+    code = gen_invite_code()
+    for _ in range(5):
+        if not await db.groups.find_one({"invite_code": code}):
+            break
+        code = gen_invite_code()
+    g = {
+        "id": str(uuid.uuid4()),
+        "name": body.name.strip(),
+        "owner_id": user["user_id"],
+        "invite_code": code,
+        "members": [{"user_id": user["user_id"], "name": user.get("name"),
+                     "joined_at": now_utc().isoformat()}],
+        "created_at": now_utc().isoformat(),
+    }
+    await db.groups.insert_one(g)
+    g.pop("_id", None)
+    return {"group": g}
+
+
+@api_router.get("/groups")
+async def list_groups(user: dict = Depends(get_current_user)):
+    docs = await db.groups.find(
+        {"members.user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    out = []
+    for g in docs:
+        subs = await db.group_subscriptions.find(
+            {"group_id": g["id"], "deleted_at": None}, {"_id": 0}).to_list(200)
+        my_share = 0.0
+        total_price = 0.0
+        for s in subs:
+            total_price += float(s.get("price", 0) or 0)
+            for sp in compute_splits(s, g.get("members", [])):
+                if sp["user_id"] == user["user_id"]:
+                    my_share += sp["amount"]
+        out.append({
+            "id": g["id"],
+            "name": g["name"],
+            "invite_code": g["invite_code"],
+            "is_owner": g["owner_id"] == user["user_id"],
+            "member_count": len(g.get("members", [])),
+            "sub_count": len(subs),
+            "my_share": round(my_share),
+            "total_price": round(total_price),
+        })
+    return {"groups": out}
+
+
+@api_router.post("/groups/join")
+async def join_group(body: JoinBody, user: dict = Depends(get_current_user)):
+    code = body.code.strip().upper()
+    g = await db.groups.find_one({"invite_code": code}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Kode grup tidak ditemukan")
+    if any(m["user_id"] == user["user_id"] for m in g.get("members", [])):
+        raise HTTPException(status_code=409, detail="Kamu sudah jadi anggota grup ini")
+    await db.groups.update_one(
+        {"id": g["id"]},
+        {"$push": {"members": {"user_id": user["user_id"], "name": user.get("name"),
+                               "joined_at": now_utc().isoformat()}}})
+    return {"status": "joined", "group_id": g["id"], "name": g["name"]}
+
+
+@api_router.get("/groups/{gid}")
+async def group_detail(gid: str, user: dict = Depends(get_current_user)):
+    g = await get_group_for_member(gid, user["user_id"])
+    members = g.get("members", [])
+    subs_docs = await db.group_subscriptions.find(
+        {"group_id": gid, "deleted_at": None}, {"_id": 0}).sort("next_due_date", 1).to_list(200)
+
+    subs = []
+    unpaid_names: set = set()
+    total_price = 0.0
+    my_total = 0.0
+    for s in subs_docs:
+        s = await advance_group_sub(s)
+        splits = compute_splits(s, members)
+        unpaid = [sp for sp in splits if not sp["paid"] and sp["amount"] > 0]
+        for sp in unpaid:
+            unpaid_names.add(sp["name"])
+        mine = next((sp for sp in splits if sp["user_id"] == user["user_id"]), None)
+        total_price += float(s.get("price", 0) or 0)
+        if mine:
+            my_total += mine["amount"]
+        subs.append({
+            **group_sub_public(s),
+            "splits": splits,
+            "unpaid_count": len(unpaid),
+            "my_amount": mine["amount"] if mine else 0,
+            "my_paid": mine["paid"] if mine else False,
+        })
+
+    return {"group": {
+        "id": g["id"],
+        "name": g["name"],
+        "owner_id": g["owner_id"],
+        "invite_code": g["invite_code"],
+        "is_owner": g["owner_id"] == user["user_id"],
+        "members": [{**m, "is_owner": m["user_id"] == g["owner_id"]} for m in members],
+        "subscriptions": subs,
+        "unpaid_members": sorted(unpaid_names),
+        "total_price": round(total_price),
+        "my_total": round(my_total),
+        "created_at": g.get("created_at"),
+    }}
+
+
+@api_router.post("/groups/{gid}/leave")
+async def leave_group(gid: str, user: dict = Depends(get_current_user)):
+    g = await get_group_for_member(gid, user["user_id"])
+    if g["owner_id"] == user["user_id"]:
+        raise HTTPException(status_code=400,
+                            detail="Koordinator tidak bisa keluar. Hapus grup jika sudah tidak dipakai.")
+    await db.groups.update_one(
+        {"id": gid}, {"$pull": {"members": {"user_id": user["user_id"]}}})
+    return {"status": "left"}
+
+
+@api_router.delete("/groups/{gid}")
+async def delete_group(gid: str, user: dict = Depends(get_current_user)):
+    g = await get_group_for_member(gid, user["user_id"])
+    if g["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Hanya koordinator yang bisa menghapus grup")
+    await db.group_subscriptions.delete_many({"group_id": gid})
+    await db.groups.delete_one({"id": gid})
+    return {"status": "deleted"}
+
+
+@api_router.post("/groups/{gid}/subscriptions")
+async def create_group_sub(gid: str, body: GroupSubBody, user: dict = Depends(get_current_user)):
+    g = await get_group_for_member(gid, user["user_id"])
+    if g["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Hanya koordinator yang bisa menambah langganan grup")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "group_id": gid,
+        **body.model_dump(),
+        "payments": {},
+        "deleted_at": None,
+        "created_at": now_utc().isoformat(),
+        "updated_at": now_utc().isoformat(),
+    }
+    await db.group_subscriptions.insert_one(doc)
+    return {"subscription": group_sub_public(doc)}
+
+
+@api_router.put("/groups/{gid}/subscriptions/{sid}")
+async def update_group_sub(gid: str, sid: str, body: GroupSubBody,
+                           user: dict = Depends(get_current_user)):
+    g = await get_group_for_member(gid, user["user_id"])
+    if g["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Hanya koordinator yang bisa mengubah langganan grup")
+    doc = await db.group_subscriptions.find_one(
+        {"id": sid, "group_id": gid, "deleted_at": None})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Langganan grup tidak ditemukan")
+    await db.group_subscriptions.update_one(
+        {"id": sid}, {"$set": {**body.model_dump(), "updated_at": now_utc().isoformat()}})
+    updated = await db.group_subscriptions.find_one({"id": sid}, {"_id": 0})
+    return {"subscription": group_sub_public(updated)}
+
+
+@api_router.delete("/groups/{gid}/subscriptions/{sid}")
+async def delete_group_sub(gid: str, sid: str, user: dict = Depends(get_current_user)):
+    g = await get_group_for_member(gid, user["user_id"])
+    if g["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Hanya koordinator yang bisa menghapus langganan grup")
+    res = await db.group_subscriptions.update_one(
+        {"id": sid, "group_id": gid, "deleted_at": None},
+        {"$set": {"deleted_at": now_utc().isoformat()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Langganan grup tidak ditemukan")
+    return {"status": "deleted"}
+
+
+@api_router.put("/groups/{gid}/subscriptions/{sid}/pay")
+async def pay_group_sub(gid: str, sid: str, body: PayBody,
+                        user: dict = Depends(get_current_user)):
+    g = await get_group_for_member(gid, user["user_id"])
+    target = body.user_id or user["user_id"]
+    if target != user["user_id"] and g["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403,
+                            detail="Hanya koordinator yang bisa mengubah status bayar anggota lain")
+    if not any(m["user_id"] == target for m in g.get("members", [])):
+        raise HTTPException(status_code=404, detail="Anggota tidak ditemukan")
+    s = await db.group_subscriptions.find_one(
+        {"id": sid, "group_id": gid, "deleted_at": None}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Langganan grup tidak ditemukan")
+    s = await advance_group_sub(s)
+    period = s["next_due_date"]
+    await db.group_subscriptions.update_one(
+        {"id": sid}, {"$set": {f"payments.{period}.{target}": body.paid}})
+    return {"status": "ok", "period": period, "user_id": target, "paid": body.paid}
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +817,11 @@ async def startup():
         await db.user_sessions.create_index("user_id")
         await db.subscriptions.create_index("user_id")
         await db.subscriptions.create_index("id", unique=True)
+        await db.groups.create_index("id", unique=True)
+        await db.groups.create_index("invite_code", unique=True)
+        await db.groups.create_index("members.user_id")
+        await db.group_subscriptions.create_index("id", unique=True)
+        await db.group_subscriptions.create_index("group_id")
     except Exception as e:
         logger.warning(f"index creation: {e}")
 

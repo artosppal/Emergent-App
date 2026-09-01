@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -18,50 +18,82 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Input, Button } from "@/src/components/ui";
-import { CATEGORIES, BILLING_CYCLES, STATUS_OPTIONS, getCategory } from "@/src/constants/categories";
+import { CATEGORIES, BILLING_CYCLES } from "@/src/constants/categories";
 import { PRESETS } from "@/src/constants/presets";
-import { api, ApiError } from "@/src/lib/api";
+import { api } from "@/src/lib/api";
 import { useToast } from "@/src/context/ToastContext";
-import { useUpgrade } from "@/src/context/UpgradeContext";
-import { scheduleReminders, cancelReminders } from "@/src/utils/notifications";
-import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
+import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
 
-const REMINDER_OPTS = [
-  { label: "H-3", value: 3 },
-  { label: "H-1", value: 1 },
-  { label: "Hari-H", value: 0 },
+const SPLIT_TYPES = [
+  { key: "equal", label: "Bagi rata" },
+  { key: "custom", label: "Custom" },
 ];
 
 function toISO(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function SubscriptionForm() {
+interface Member {
+  user_id: string;
+  name: string;
+}
+
+export default function GroupSubForm() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
-  const { showUpgrade } = useUpgrade();
-  const params = useLocalSearchParams<{ id?: string }>();
-  const editing = !!params.id;
+  const params = useLocalSearchParams<{ groupId: string; subId?: string }>();
+  const gid = params.groupId as string;
+  const editing = !!params.subId;
 
-  const [loading, setLoading] = useState(editing);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("entertainment");
   const [price, setPrice] = useState("");
   const [cycle, setCycle] = useState("monthly");
-  const [status, setStatus] = useState("paid");
   const [dueDate, setDueDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 30);
     return toISO(d);
   });
-  const [reminders, setReminders] = useState<number[]>([3, 1, 0]);
-  const [notes, setNotes] = useState("");
+  const [splitType, setSplitType] = useState("equal");
+  const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
   const [showPicker, setShowPicker] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res: any = await api.getGroup(gid);
+        setMembers(res.group.members);
+        if (editing) {
+          const s = res.group.subscriptions.find((x: any) => x.id === params.subId);
+          if (s) {
+            setName(s.name);
+            setCategory(s.category);
+            setPrice(String(s.price ?? ""));
+            setCycle(s.billing_cycle);
+            setDueDate(s.next_due_date);
+            setSplitType(s.split_type || "equal");
+            if (s.custom_splits) {
+              const cs: Record<string, string> = {};
+              Object.entries(s.custom_splits).forEach(([k, v]) => (cs[k] = String(v)));
+              setCustomSplits(cs);
+            }
+          }
+        }
+      } catch {
+        toast.show("Gagal memuat data grup", "error");
+        router.back();
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [gid, editing, params.subId]);
 
   const applyPreset = (p: (typeof PRESETS)[number]) => {
     setName(p.name);
@@ -71,68 +103,44 @@ export default function SubscriptionForm() {
     setSelectedPreset(p.name);
   };
 
-  useEffect(() => {
-    if (!editing) return;
-    (async () => {
-      try {
-        const res: any = await api.getSub(params.id as string);
-        const s = res.subscription;
-        setName(s.name);
-        setCategory(s.category);
-        setPrice(String(s.price ?? ""));
-        setCycle(s.billing_cycle);
-        setStatus(s.status);
-        setDueDate(s.next_due_date);
-        setReminders(s.reminders || []);
-        setNotes(s.notes || "");
-      } catch {
-        toast.show("Gagal memuat langganan", "error");
-        router.back();
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [editing, params.id]);
-
-  const toggleReminder = (v: number) => {
-    setReminders((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
-  };
+  const priceNum = parseFloat(price.replace(/[^0-9.]/g, "")) || 0;
+  const equalShare = members.length > 0 ? priceNum / members.length : 0;
+  const customTotal = members.reduce(
+    (sum, m) => sum + (parseFloat((customSplits[m.user_id] || "0").replace(/[^0-9.]/g, "")) || 0),
+    0,
+  );
 
   const save = async () => {
     if (!name.trim()) {
       toast.show("Nama layanan wajib diisi", "error");
       return;
     }
-    const priceNum = parseFloat(price.replace(/[^0-9.]/g, "")) || 0;
-    const body = {
+    const body: any = {
       name: name.trim(),
       category,
       price: priceNum,
       billing_cycle: cycle,
       next_due_date: dueDate,
-      status,
-      reminders,
-      notes: notes.trim() || null,
+      split_type: splitType,
+      custom_splits:
+        splitType === "custom"
+          ? members.reduce((acc: Record<string, number>, m) => {
+              acc[m.user_id] =
+                parseFloat((customSplits[m.user_id] || "0").replace(/[^0-9.]/g, "")) || 0;
+              return acc;
+            }, {})
+          : null,
     };
     setSaving(true);
     try {
-      let sub: any;
       if (editing) {
-        const res: any = await api.updateSub(params.id as string, body);
-        sub = res.subscription;
+        await api.updateGroupSub(gid, params.subId as string, body);
       } else {
-        const res: any = await api.createSub(body);
-        sub = res.subscription;
+        await api.createGroupSub(gid, body);
       }
-      await scheduleReminders(sub);
-      toast.show(editing ? "Langganan diperbarui" : "Langganan ditambahkan 🎉", "success");
+      toast.show(editing ? "Langganan grup diperbarui" : "Langganan grup ditambahkan 🎉", "success");
       router.back();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 403) {
-        router.back();
-        setTimeout(showUpgrade, 350);
-        return;
-      }
+    } catch {
       toast.show("Gagal menyimpan, coba lagi", "error");
     } finally {
       setSaving(false);
@@ -146,9 +154,8 @@ export default function SubscriptionForm() {
       return;
     }
     try {
-      await api.deleteSub(params.id as string);
-      await cancelReminders(params.id as string);
-      toast.show("Langganan dihapus", "info");
+      await api.deleteGroupSub(gid, params.subId as string);
+      toast.show("Langganan grup dihapus", "info");
       router.back();
     } catch {
       toast.show("Gagal menghapus", "error");
@@ -171,12 +178,13 @@ export default function SubscriptionForm() {
 
   return (
     <View style={styles.root}>
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable testID="close-form-button" onPress={() => router.back()} style={styles.headerBtn}>
+        <Pressable testID="close-group-sub-form" onPress={() => router.back()} style={styles.headerBtn}>
           <MaterialCommunityIcons name="close" size={24} color={colors.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle}>{editing ? "Edit Langganan" : "Tambah Langganan"}</Text>
+        <Text style={styles.headerTitle}>
+          {editing ? "Edit Langganan Grup" : "Langganan Bersama"}
+        </Text>
         <View style={styles.headerBtn} />
       </View>
 
@@ -201,10 +209,7 @@ export default function SubscriptionForm() {
                     key={p.name}
                     testID={`preset-${p.name}`}
                     onPress={() => applyPreset(p)}
-                    style={[
-                      styles.presetChip,
-                      active && { borderColor: p.color, backgroundColor: p.color + "14" },
-                    ]}
+                    style={[styles.presetChip, active && { borderColor: p.color, backgroundColor: p.color + "14" }]}
                   >
                     <MaterialCommunityIcons name={p.icon as any} size={18} color={p.color} />
                     <Text style={[styles.presetText, active && { color: p.color }]}>{p.name}</Text>
@@ -217,7 +222,7 @@ export default function SubscriptionForm() {
         )}
 
         <Input
-          testID="sub-name-input"
+          testID="group-sub-name-input"
           label="Nama layanan"
           icon="tag"
           placeholder="Netflix, Spotify, dll"
@@ -225,7 +230,6 @@ export default function SubscriptionForm() {
           onChangeText={setName}
         />
 
-        {/* Category */}
         <Text style={styles.label}>Kategori</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
           {CATEGORIES.map((c) => {
@@ -233,26 +237,21 @@ export default function SubscriptionForm() {
             return (
               <Pressable
                 key={c.key}
-                testID={`form-cat-${c.key}`}
+                testID={`gform-cat-${c.key}`}
                 onPress={() => setCategory(c.key)}
                 style={[styles.catChip, active && { backgroundColor: c.color + "1A", borderColor: c.color }]}
               >
-                <MaterialCommunityIcons
-                  name={c.icon as any}
-                  size={18}
-                  color={active ? c.color : colors.muted}
-                />
+                <MaterialCommunityIcons name={c.icon as any} size={18} color={active ? c.color : colors.muted} />
                 <Text style={[styles.catChipText, active && { color: c.color }]}>{c.label}</Text>
               </Pressable>
             );
           })}
         </ScrollView>
 
-        {/* Price */}
         <View style={{ marginTop: spacing.lg }}>
           <Input
-            testID="sub-price-input"
-            label="Harga (Rp)"
+            testID="group-sub-price-input"
+            label="Harga total (Rp)"
             icon="cash"
             placeholder="0"
             value={price}
@@ -261,7 +260,6 @@ export default function SubscriptionForm() {
           />
         </View>
 
-        {/* Billing cycle */}
         <Text style={styles.label}>Siklus tagihan</Text>
         <View style={styles.segment}>
           {BILLING_CYCLES.map((c) => {
@@ -269,7 +267,7 @@ export default function SubscriptionForm() {
             return (
               <Pressable
                 key={c.key}
-                testID={`cycle-${c.key}`}
+                testID={`gcycle-${c.key}`}
                 onPress={() => setCycle(c.key)}
                 style={[styles.segmentItem, active && styles.segmentActive]}
               >
@@ -279,13 +277,12 @@ export default function SubscriptionForm() {
           })}
         </View>
 
-        {/* Due date */}
         <Text style={styles.label}>Jatuh tempo berikutnya</Text>
         {Platform.OS === "web" ? (
           <View style={styles.dateBox}>
             <MaterialCommunityIcons name="calendar" size={20} color={colors.brand} />
             <TextInput
-              testID="due-date-input"
+              testID="group-due-date-input"
               value={dueDate}
               onChangeText={setDueDate}
               placeholder="YYYY-MM-DD"
@@ -294,7 +291,7 @@ export default function SubscriptionForm() {
             />
           </View>
         ) : (
-          <Pressable testID="due-date-button" style={styles.dateBox} onPress={() => setShowPicker(true)}>
+          <Pressable testID="group-due-date-button" style={styles.dateBox} onPress={() => setShowPicker(true)}>
             <MaterialCommunityIcons name="calendar" size={20} color={colors.brand} />
             <Text style={styles.dateText}>{dueDisplay}</Text>
             <MaterialCommunityIcons name="chevron-down" size={20} color={colors.muted} />
@@ -312,77 +309,81 @@ export default function SubscriptionForm() {
           />
         )}
 
-        {/* Status */}
-        <Text style={styles.label}>Status</Text>
+        {/* Split */}
+        <Text style={styles.label}>Pembagian biaya</Text>
         <View style={styles.segment}>
-          {STATUS_OPTIONS.map((c) => {
-            const active = status === c.key;
+          {SPLIT_TYPES.map((s) => {
+            const active = splitType === s.key;
             return (
               <Pressable
-                key={c.key}
-                testID={`status-${c.key}`}
-                onPress={() => setStatus(c.key)}
+                key={s.key}
+                testID={`split-type-${s.key}`}
+                onPress={() => setSplitType(s.key)}
                 style={[styles.segmentItem, active && styles.segmentActive]}
               >
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{c.label}</Text>
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{s.label}</Text>
               </Pressable>
             );
           })}
         </View>
 
-        {/* Reminders */}
-        <Text style={styles.label}>Ingatkan saya</Text>
-        <View style={styles.reminderRow}>
-          {REMINDER_OPTS.map((r) => {
-            const active = reminders.includes(r.value);
-            return (
-              <Pressable
-                key={r.value}
-                testID={`reminder-${r.value}`}
-                onPress={() => toggleReminder(r.value)}
-                style={[styles.reminderChip, active && styles.reminderActive]}
-              >
-                <MaterialCommunityIcons
-                  name={active ? "bell-ring" : "bell-outline"}
-                  size={16}
-                  color={active ? colors.onBrandPrimary : colors.muted}
-                />
-                <Text style={[styles.reminderText, active && { color: colors.onBrandPrimary }]}>
-                  {r.label}
+        {splitType === "equal" ? (
+          <View style={styles.equalCard}>
+            <MaterialCommunityIcons name="account-multiple" size={20} color={colors.brand} />
+            <Text style={styles.equalText}>
+              {members.length} anggota × {formatRupiah(equalShare)} per orang
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.customCard}>
+            {members.map((m) => (
+              <View key={m.user_id} style={styles.customRow}>
+                <Text style={styles.customName} numberOfLines={1}>
+                  {m.name}
                 </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {/* Notes */}
-        <View style={{ marginTop: spacing.lg }}>
-          <Input
-            testID="sub-notes-input"
-            label="Catatan (opsional)"
-            icon="note-text"
-            placeholder="mis. akun bareng si A"
-            value={notes}
-            onChangeText={setNotes}
-          />
-        </View>
+                <View style={styles.customInputBox}>
+                  <Text style={styles.rpPrefix}>Rp</Text>
+                  <TextInput
+                    testID={`custom-split-${m.user_id}`}
+                    value={customSplits[m.user_id] || ""}
+                    onChangeText={(t) => setCustomSplits((prev) => ({ ...prev, [m.user_id]: t }))}
+                    placeholder="0"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="numeric"
+                    style={styles.customInput}
+                  />
+                </View>
+              </View>
+            ))}
+            <View style={styles.customTotalRow}>
+              <Text style={styles.customTotalLabel}>Total pembagian</Text>
+              <Text
+                style={[
+                  styles.customTotalValue,
+                  { color: Math.round(customTotal) === Math.round(priceNum) ? colors.success : colors.warning },
+                ]}
+              >
+                {formatRupiah(customTotal)} / {formatRupiah(priceNum)}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {editing && (
-          <Pressable testID="delete-button" style={styles.deleteBtn} onPress={doDelete}>
+          <Pressable testID="delete-group-sub-button" style={styles.deleteBtn} onPress={doDelete}>
             <MaterialCommunityIcons name="trash-can-outline" size={20} color={colors.error} />
             <Text style={styles.deleteText}>
-              {confirmDelete ? "Tap lagi untuk konfirmasi hapus" : "Hapus langganan"}
+              {confirmDelete ? "Tap lagi untuk konfirmasi hapus" : "Hapus langganan grup"}
             </Text>
           </Pressable>
         )}
       </KeyboardAwareScrollView>
 
-      {/* Sticky save */}
       <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
           <Button
-            testID="save-subscription-button"
-            title={editing ? "Simpan Perubahan" : "Simpan Langganan"}
+            testID="save-group-sub-button"
+            title={editing ? "Simpan Perubahan" : "Simpan Langganan Grup"}
             onPress={save}
             loading={saving}
           />
@@ -415,7 +416,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     marginTop: spacing.xs,
   },
-  catRow: { gap: spacing.sm, paddingBottom: spacing.xs, paddingRight: spacing.lg },
+
   presetRow: { gap: spacing.sm, paddingRight: spacing.lg },
   presetChip: {
     flexDirection: "row",
@@ -430,6 +431,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   presetText: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurface },
+
+  catRow: { gap: spacing.sm, paddingBottom: spacing.xs, paddingRight: spacing.lg },
   catChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -470,21 +473,49 @@ const styles = StyleSheet.create({
   dateText: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurface },
   dateInput: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.lg, color: colors.onSurface, paddingVertical: spacing.md },
 
-  reminderRow: { flexDirection: "row", gap: spacing.sm },
-  reminderChip: {
-    flex: 1,
+  equalCard: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    height: 46,
+    gap: spacing.md,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    marginTop: spacing.md,
+  },
+  equalText: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onBrandTertiary },
+
+  customCard: {
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.md,
     borderWidth: 1.5,
     borderColor: colors.border,
-    backgroundColor: colors.surfaceSecondary,
+    padding: spacing.lg,
+    gap: spacing.md,
+    marginTop: spacing.md,
   },
-  reminderActive: { backgroundColor: colors.brand, borderColor: colors.brand },
-  reminderText: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.muted },
+  customRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  customName: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurface },
+  customInputBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.surfaceTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    width: 140,
+    height: 44,
+  },
+  rpPrefix: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.muted },
+  customInput: { flex: 1, fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
+  customTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  customTotalLabel: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted },
+  customTotalValue: { fontFamily: font.bold, fontSize: fontSize.sm },
 
   deleteBtn: {
     flexDirection: "row",

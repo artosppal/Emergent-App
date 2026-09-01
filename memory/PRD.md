@@ -32,14 +32,22 @@ Tagline: "Biar gak ada lagi langganan yang kelewat atau lupa di-cancel."
 - Notification channel settings in Akun (push always; WhatsApp locked behind premium).
 - Toast system (no Alerts). Keyboard handling via react-native-keyboard-controller.
 
+### FASE 2 — Family/Team Sharing ✅ (done 2026-06)
+- Groups: create (premium-only, 403 premium_required), join via 6-char invite code (case-insensitive), leave (owner blocked), delete (owner-only, cascades subs).
+- Shared subs (owner/koordinator-only CRUD): equal or custom split per member. Payments keyed per next_due_date period; due dates auto-advance past today → paid statuses reset automatically each period.
+- Pay status: member toggles self, owner toggles anyone. Coordinator "unpaid members" overview in group detail.
+- UI: "Grup" tab (list + create/join modals), /group/[id] detail (invite code + Share, members, split rows w/ tap-to-toggle paid), /group/add-sub form.
+- Service presets (src/constants/presets.ts, 16 popular ID services w/ common prices): quick-pick chips in personal sub form + group sub form.
+- "Sorotan boros" on dashboard: most_expensive (monthly-normalized) + ending_trials (trials due 0–14 days).
+- Backend tests: /app/backend/tests/test_notifin_groups.py (run with `pytest -n 0`, serial).
+
 ## Backlog (next phases)
-- P0 FASE 2: Family/Team Sharing — groups, invite code/link, shared subs with cost split (equal/custom), per-member owed amount + paid status, coordinator summary, group reminders.
-- P1 FASE 3: WhatsApp notification channel (generic HTTP/webhook provider — Fonnte/Watzap/Wablas), per-subscription channel choice, message template.
+- P1 FASE 3: WhatsApp notification channel (generic HTTP/webhook provider — Fonnte/Watzap/Wablas), per-subscription channel choice, message template. Group reminders via WhatsApp.
 - P1 FASE 4: Payment gateway (Midtrans/Xendit — QRIS/e-wallet/bank), pricing page, onboarding, weekly/monthly summary, social share of monthly total, referral program.
 
 ## Pending user inputs / build notes
-- Android push requires user to supply Firebase google-services.json + deploy/build (does not work in Expo Go/preview).
+- Android push requires user to supply Firebase google-services.json + deploy/build (does not work in Expo Go/preview). Guide given to user end of Fase 2 turn; file NOT yet provided. When provided: place at /app/frontend/google-services.json and add "googleServicesFile": "./google-services.json" under expo.android in app.json.
 - EMERGENT_PUSH_KEY is placeholder; auto-set at deploy.
 
 ## Next Tasks
-- Await user confirmation of Fase 1, then proceed to Fase 2.
+- Await user confirmation of Fase 2, then proceed to Fase 3 (WhatsApp channel) per user approval.

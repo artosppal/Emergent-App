@@ -16,7 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/context/AuthContext";
-import { SubscriptionCard, Subscription } from "@/src/components/SubscriptionCard";
+import { SubscriptionCard, Subscription, CategoryLogo } from "@/src/components/SubscriptionCard";
 import { SectionTitle, EmptyState, Button } from "@/src/components/ui";
 import { getCategory } from "@/src/constants/categories";
 import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
@@ -28,6 +28,8 @@ interface DashboardData {
   plan: string;
   free_limit: number;
   upcoming: Subscription[];
+  most_expensive?: (Subscription & { monthly_cost: number }) | null;
+  ending_trials?: Subscription[];
   by_category: { category: string; total: number; count: number }[];
 }
 
@@ -151,6 +153,65 @@ export default function Dashboard() {
         </View>
       ) : (
         <>
+          {/* Ringkasan boros */}
+          {(data?.most_expensive || (data?.ending_trials && data.ending_trials.length > 0)) && (
+            <View style={styles.section}>
+              <SectionTitle title="Sorotan boros" />
+              <View style={{ gap: spacing.md }}>
+                {data?.most_expensive && (
+                  <Pressable
+                    testID="most-expensive-card"
+                    onPress={() =>
+                      router.push({
+                        pathname: "/subscription/form",
+                        params: { id: data.most_expensive!.id },
+                      })
+                    }
+                    style={({ pressed }) => [styles.borosCard, pressed && { opacity: 0.9 }]}
+                  >
+                    <CategoryLogo category={data.most_expensive.category} size={44} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.borosLabel}>💸 Paling mahal</Text>
+                      <Text style={styles.borosName} numberOfLines={1}>
+                        {data.most_expensive.name}
+                      </Text>
+                      <Text style={styles.borosMeta}>
+                        {formatRupiah(data.most_expensive.monthly_cost)}/bulan ·{" "}
+                        {Math.round(
+                          (data.most_expensive.monthly_cost / (data.total_this_month || 1)) * 100,
+                        )}
+                        % dari total
+                      </Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
+                  </Pressable>
+                )}
+                {data?.ending_trials?.map((t) => (
+                  <Pressable
+                    key={t.id}
+                    testID={`trial-warning-${t.id}`}
+                    onPress={() =>
+                      router.push({ pathname: "/subscription/form", params: { id: t.id } })
+                    }
+                    style={({ pressed }) => [styles.trialWarnCard, pressed && { opacity: 0.9 }]}
+                  >
+                    <MaterialCommunityIcons name="timer-sand" size={22} color="#B45309" />
+                    <Text style={styles.trialWarnText} numberOfLines={2}>
+                      Trial <Text style={{ fontFamily: font.extrabold }}>{t.name}</Text>{" "}
+                      {t.days_left === 0
+                        ? "berakhir hari ini!"
+                        : t.days_left === 1
+                          ? "berakhir besok!"
+                          : `berakhir ${t.days_left} hari lagi`}{" "}
+                      — cancel kalau gak dipakai.
+                    </Text>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color="#B45309" />
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
           {/* Upcoming */}
           <View style={styles.section}>
             <SectionTitle title="Mendekati jatuh tempo" />
@@ -254,6 +315,28 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   calmText: { flex: 1, fontFamily: font.medium, fontSize: fontSize.base, color: colors.onBrandTertiary },
+
+  borosCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    ...shadow.soft,
+  },
+  borosLabel: { fontFamily: font.semibold, fontSize: 11, color: colors.muted },
+  borosName: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface, marginTop: 1 },
+  borosMeta: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.error, marginTop: 1 },
+  trialWarnCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: "#FEF3C7",
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+  },
+  trialWarnText: { flex: 1, fontFamily: font.medium, fontSize: fontSize.base, color: "#92400E", lineHeight: 20 },
 
   chartCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.lg, ...shadow.soft },
   chartRow: { gap: spacing.sm },
