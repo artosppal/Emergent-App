@@ -1,0 +1,179 @@
+{
+  "app_name": "Notifin",
+  "personality": "4 Tactile / Playful LIGHT",
+  "personality_one_liner": "A friendly, stress-free financial companion that feels like organizing your desk with colorful, rounded blocks.",
+  "color": {
+    "surface": "#F7FAF8",
+    "onSurface": "#182924",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#182924",
+    "surfaceTertiary": "#E8F0EC",
+    "onSurfaceTertiary": "#233B33",
+    "surfaceInverse": "#182924",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#059669",
+    "brandPrimary": "#059669",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#D1FAE5",
+    "onBrandSecondary": "#065F46",
+    "brandTertiary": "#ECFDF5",
+    "onBrandTertiary": "#047857",
+    "success": "#10B981",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F59E0B",
+    "onWarning": "#FFFFFF",
+    "error": "#EF4444",
+    "onError": "#FFFFFF",
+    "info": "#0D9488",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E7EB",
+    "borderStrong": "#D1D5DB",
+    "divider": "#F3F4F6"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous touch targets. Maintain consistent padding around cards (at least 16pt/lg) so it doesn't feel cramped. No orphans.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "2",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Bottom tab bar background",
+      "Sticky header over scrolling content",
+      "Floating Action Button background"
+    ],
+    "dont's": [
+      "Body cards",
+      "Form inputs",
+      "List rows"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "haptics": {
+    "button_press": "light",
+    "tab_change": "light",
+    "freemium_prompt": "medium",
+    "subscription_added": "success",
+    "toggle_switch": "light"
+  },
+  "screens": [
+    {
+      "name": "Auth",
+      "purpose": "Smooth onboarding with Email or Google login.",
+      "states": {
+        "loading": "Centered spinner with friendly copy",
+        "empty": "N/A",
+        "error": "Toast or inline text under inputs"
+      },
+      "layout": "Hero image at the top covering 40% of screen with abstract calm green background and gradient scrim. Clean pill-shaped inputs, large brandPrimary CTA at the bottom."
+    },
+    {
+      "name": "Dashboard (Home)",
+      "purpose": "A quick, stress-free snapshot of total monthly spend and upcoming renewals.",
+      "states": {
+        "loading": "Skeleton cards mimicking layout",
+        "empty": "Friendly paper box illustration 'Belum ada langganan. Yuk tambah sekarang!' with a prominent 'Add Subscription' CTA",
+        "error": "Error illustration with 'Coba lagi' button"
+      },
+      "layout": "Header with greeting. Top card: large total spend figure (Rp) with brand background and subtle noise texture. Middle section: 'Mendekati Jatuh Tempo' (Upcoming due in 7 days) highlighted in tactile cards. Bottom: Simple Category Spend visualization (horizontal stacked bar or colorful chips)."
+    },
+    {
+      "name": "Subscription List",
+      "purpose": "Comprehensive view of all subscriptions with easy filtering.",
+      "states": {
+        "loading": "Skeleton rows",
+        "empty": "Illustration showing organized empty shelves",
+        "error": "Retry button"
+      },
+      "layout": "Sticky header with glassmorphism containing horizontal scrollable filter pills (All, Entertainment, Productivity, Active, Trial). List items as chunky rounded cards (md radius, shadow tier 2) containing the subscription logo, name, next billing date, and Rp cost. FAB at bottom right to add."
+    },
+    {
+      "name": "Add/Edit Subscription",
+      "purpose": "Form to input subscription details like name, cost, and cycle.",
+      "states": {
+        "loading": "Spinner on CTA",
+        "empty": "N/A",
+        "error": "Inline validation"
+      },
+      "layout": "Single column form inside a KeyboardAvoidingView. Labels above inputs. Sticky 'Simpan' CTA at the bottom above safe area."
+    },
+    {
+      "name": "Freemium Modal",
+      "purpose": "Gating the 4th subscription, prompting upgrade.",
+      "states": {
+        "loading": "N/A",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Bottom sheet modal using @gorhom/bottom-sheet. Playful illustration at top, bold value prop ('Unlimited subs + WA reminders'), large pill primary CTA 'Upgrade ke Premium'."
+    }
+  ],
+  "images": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1685871286419-58e4fc0de8e1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njl8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGNhbG0lMjBncmVlbiUyMGxpcXVpZCUyMHNoYXBlc3xlbnwwfHx8fDE3ODgyODExNjF8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract calm green liquid shapes"
+    },
+    "empty_state_box": {
+      "url": "https://images.unsplash.com/photo-1573376670329-0261ea9fde97?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzd8MHwxfHNlYXJjaHwxfHxmcmllbmRseSUyMGVtcHR5JTIwc3RhdGUlMjBpbGx1c3RyYXRpb24lMjBwYXBlciUyMGJveHxlbnwwfHx8fDE3ODgyODExNjJ8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Friendly empty cardboard box"
+    },
+    "logo_netflix": {
+      "url": "https://images.unsplash.com/photo-1611798821136-26bfb61b734f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHwxfHxuZXRmbGl4JTIwbG9nbyUyMHRyYW5zcGFyZW50JTIwcG5nfGVufDB8fHx8MTc4ODI4MTE2Mnww&ixlib=rb-4.1.0&q=85",
+      "alt": "Netflix Logo"
+    },
+    "logo_spotify": {
+      "url": "https://images.unsplash.com/photo-1617722694278-84453e1719a8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxzcG90aWZ5JTIwbG9nbyUyMHRyYW5zcGFyZW50JTIwcG5nfGVufDB8fHx8MTc4ODI4MTE2MXww&ixlib=rb-4.1.0&q=85",
+      "alt": "Spotify Logo"
+    },
+    "logo_youtube": {
+      "url": "https://images.unsplash.com/photo-1611162616475-46b635cb6868?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwxfHx5b3V0dWJlJTIwbG9nbyUyMHRyYW5zcGFyZW50JTIwcG5nfGVufDB8fHx8MTc4ODI4MTE2Mnww&ixlib=rb-4.1.0&q=85",
+      "alt": "YouTube Logo"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Adhere strictly to the 'Tactile / Playful' layout: use chunky cards, generous padding, and pill-shaped interactive elements. Never make the UI look like a rigid corporate banking app.",
+    "For the main Dashboard card, use the 'brand' color background with a subtle noise or linear gradient to give it depth.",
+    "Implement the 'Freemium gating modal' using @gorhom/bottom-sheet. It should trigger when the user attempts to add a 4th subscription and currently has a 'free' status.",
+    "Apply Glassmorphism heavily on sticky headers and the bottom tab bar to create depth, but maintain WCAG accessibility by ensuring proper tint overlay behind the blur.",
+    "For rendering subscription logos (e.g. Netflix, Spotify), use the provided Unsplash URLs inside a rounded container (md or lg radius) with overflow: hidden to make the photographic backgrounds look like intentional app icons.",
+    "Ensure the empty states on the Dashboard and Subscription list use the 'empty_state_box' image, positioned centrally with a friendly Indonesian copy ('Belum ada langganan...').",
+    "Use Phosphor icons. Stick to consistent weights (e.g. filled for active states, regular for inactive).",
+    "Make sure forms have labels ABOVE inputs, not floating. Use sticky CTAs anchored at the bottom with keyboard avoiding views."
+  ]
+}
