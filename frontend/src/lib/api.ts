@@ -69,6 +69,8 @@ export const api = {
   downgrade: () => apiFetch("/auth/downgrade", { method: "POST" }),
   updateChannels: (body: { push: boolean; whatsapp: boolean }) =>
     apiFetch("/auth/channels", { method: "PUT", body: JSON.stringify(body) }),
+  updatePhone: (phone: string) =>
+    apiFetch("/auth/phone", { method: "PUT", body: JSON.stringify({ phone }) }),
 
   dashboard: () => apiFetch("/dashboard"),
   listSubs: (category?: string, status?: string) => {
@@ -101,6 +103,12 @@ export const api = {
     apiFetch(`/groups/${gid}/subscriptions/${sid}`, { method: "DELETE" }),
   payGroupSub: (gid: string, sid: string, body: { user_id?: string; paid: boolean }) =>
     apiFetch(`/groups/${gid}/subscriptions/${sid}/pay`, { method: "PUT", body: JSON.stringify(body) }),
+  nudgeGroupSub: (gid: string, sid: string, user_id: string) =>
+    apiFetch(`/groups/${gid}/subscriptions/${sid}/nudge`, {
+      method: "POST",
+      body: JSON.stringify({ user_id }),
+    }),
+  groupHistory: (gid: string) => apiFetch(`/groups/${gid}/history`),
 
   registerPush: (body: { user_id: string; platform: string; device_token: string }) =>
     apiFetch("/register-push", { method: "POST", body: JSON.stringify(body) }),

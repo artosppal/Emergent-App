@@ -1,0 +1,43 @@
+{
+  "summary": "Notifin FASE 3 (WhatsApp Fonnte simulation + phone endpoint + reminder_sweep scheduler + nudge + payment history) tested end-to-end. Backend: 15/15 new pytest cases pass in /app/backend/tests/test_notifin_fase3.py; combined regression 52/52 pytest cases pass (100%). All contract requirements verified: PUT /api/auth/phone normalizes '0812-3456-7890'->'6281234567890', accepts '+62 812 ...' -> '6281299991111', 422 on '123', empty string clears to null, public_user always includes wa_live=false while FONNTE_TOKEN empty. Nudge endpoint: owner->unpaid member 200 with channels containing 'whatsapp' and wa_simulated:true, repeat same day 429, self 400, non-owner 403, nudge-already-paid 400, db.wa_outbox record present with status='simulated'. GET /api/groups/{gid}/history: new sub -> empty periods; after backdating created_at 200 days in Mongo and past next_due_date, history returns periods newest-first with splits/paid_count/member_count. reminder_sweep() imported and executed directly against a fresh Motor client (swapped into server.db): premium+wa+phone user with personal sub due tomorrow -> db.wa_outbox gets one 'simulated' record containing template markers ('Halo <name>', service, 'Rp65.000', 'besok'); second sweep produces zero duplicates via notif_log unique-key. Group sub due tomorrow: only premium+wa+phone member receives WA record; free/no-phone member is skipped (phone=null count stays 0). Frontend (mobile 390x844): Akun tab renders 'Nomor WhatsApp' row (phone-row) which opens modal with phone-input + save-phone-button; saving '081234567890' updates row to '+6281234567890' with success toast; invalid '123' shows toast 'Nomor tidak valid. Pakai format 08xx atau +62xx' (backend 422); enabling WA toggle on premium user with wa_live=false renders the amber 'Mode simulasi - pesan WhatsApp belum benar-benar terkirim sampai token provider (Fonnte) dipasang.' banner. Group detail (owner view): 'Ingatkan' button (nudge-{sid}-{mid}) appears only next to unpaid non-owner rows; tap 1 -> success toast 'Pengingat terkirim ke FE Member \ud83d\udc4b (WA masih simulasi)'; tap 2 same day -> info toast 'Sudah diingatkan hari ini. Coba lagi besok ya.' (backend 429). 'Riwayat pembayaran' button (history-button) below shared subs navigates to /group/history and shows 'Belum ada riwayat' empty state for a freshly created group sub. No RN red-screen. Carry-over cosmetic 'shadow*' web deprecation warnings only (already logged in iter 1-2).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": [
+        "Carry-over from iterations 1-2: 'shadow*' props deprecation warnings on react-native-web. Not regressing in FASE 3."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_notifin_fase3.py",
+    "/app/backend/tests/test_notifin_groups.py",
+    "/app/backend/tests/test_notifin_backend.py",
+    "/app/test_reports/pytest/pytest_fase3.xml",
+    "/app/test_reports/pytest/pytest_all.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: FastAPI @app.on_event('startup'/'shutdown') is deprecated in Starlette 0.36+ (see DeprecationWarning from tests). Consider migrating to a lifespan context manager for future-proofing. Non-blocking.",
+    "OPTIONAL (test-only best practice for main agent): reminder_sweep() shares module-level server.db across event loops, which required tests to swap in a fresh Motor client per asyncio.run. This is fine because reminder_sweep is only called from the scheduler loop in prod, but keep in mind that any future direct callers from a different loop context (e.g., admin trigger endpoint) will need the same isolation."
+  ],
+  "critical_code_review_comments": [
+    "server.py normalize_phone regex `62[1-9][0-9]{7,12}` cleanly rejects '123' (becomes '123' -> no '62' prefix) and short '08xx' inputs; edge cases covered.",
+    "server.py wa_live() re-reads module-level FONNTE_TOKEN so if token is added at runtime without restart, wa_live still returns False until process restart. Acceptable: convention is to restart backend when env vars change. Not a bug for MVP.",
+    "server.py claim_notif() catches broad Exception on duplicate-key insert; correct but silently swallows unrelated errors (e.g., connection failure). Could log at debug level for observability. Minor.",
+    "server.py reminder_sweep for group subs: still tries push send even when EMERGENT_PUSH_KEY is placeholder (send_push raises HTTPException 500 which is caught in except - good). notif_log entry is claimed BEFORE push attempt, so a failed push permanently blocks retry that day. This matches spec ('idempotent'), but if push relay comes online mid-day a member may miss the initial push. Acceptable for MVP.",
+    "server.py group_history: cycle_back uses .replace(year=y-1) which on Feb 29 leap-day fallback replaces day=28 — same as add_cycle. Consistent.",
+    "server.py public_user emits wa_live for every response, including /auth/me, /auth/upgrade, /auth/channels, /auth/phone — good, no drift risk on the client.",
+    "frontend account.tsx: simulasi banner only shows when isPremium && wa && !user?.wa_live. Correct per spec. Consider also showing banner when isPremium && !wa && !user?.wa_live to inform user before they toggle. Non-blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_notifin_fase3.py (new — 15 tests: phone endpoint x5, nudge x6, history x2, reminder_sweep x2)"
+  ],
+  "success_rate": {"backend": "100% (15/15 new; 52/52 combined regression)", "frontend": "100% of tested FASE 3 flows"},
+  "seed_data_creation": "Tests create ephemeral users prefixed 'test_f3_*' plus a handful of direct-Mongo users prefixed 'user_swep_*'/'user_go_*'/'user_ge_*'/'user_gi_*' for reminder_sweep isolation. Test users/subs/groups created via Mongo are cleaned up in-test. WA outbox 'simulated' records are intentionally left (evidence) but scoped by unique phone (6281200099988, 6281255544433) that no real user shares. Frontend created ephemeral fe_phone_*, fe_own_*, fe_mem_* users.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "FASE 3 fully verified. To re-run FASE 3 backend suite: `pytest /app/backend/tests/test_notifin_fase3.py -n 0`. Note that reminder_sweep tests directly patch server.db with a fresh Motor client per asyncio.run — do NOT change to `asyncio.get_event_loop().run_until_complete()` as it will trip 'attached to different loop' with the module-level Motor client. FONNTE_TOKEN must remain empty in /app/backend/.env for these tests (spec = simulation mode). Push relay remains placeholder — send_push raises inside nudge/sweep and is caught (channels list may only contain 'whatsapp' when target has a phone, or be empty when neither channel works). Login testID: submit-button (unchanged from iter 2). System date ~2026-09-02.",
+  "rca_of_issue": "N/A - no defects found in FASE 3."
+}

@@ -14,7 +14,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { api } from "@/src/lib/api";
+import { api, ApiError } from "@/src/lib/api";
 import { useAuth } from "@/src/context/AuthContext";
 import { useToast } from "@/src/context/ToastContext";
 import { CategoryLogo } from "@/src/components/SubscriptionCard";
@@ -138,6 +138,25 @@ export default function GroupDetailScreen() {
     } catch {
       toast.show("Gagal menyimpan status", "error");
       load();
+    }
+  };
+
+  const nudge = async (sub: GroupSub, split: Split) => {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const res: any = await api.nudgeGroupSub(gid, sub.id, split.user_id);
+      toast.show(
+        res.wa_simulated
+          ? `Pengingat terkirim ke ${split.name} 👋 (WA masih simulasi)`
+          : `Pengingat terkirim ke ${split.name} 👋`,
+        "success",
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 429) {
+        toast.show("Sudah diingatkan hari ini. Coba lagi besok ya.", "info");
+      } else {
+        toast.show("Gagal mengirim pengingat", "error");
+      }
     }
   };
 
@@ -352,6 +371,23 @@ export default function GroupDetailScreen() {
                         <Text style={[styles.splitAmount, sp.paid && styles.splitPaid]}>
                           {formatRupiah(sp.amount)}
                         </Text>
+                        {!sp.paid &&
+                          sp.amount > 0 &&
+                          group.is_owner &&
+                          sp.user_id !== user?.user_id && (
+                            <Pressable
+                              testID={`nudge-${s.id}-${sp.user_id}`}
+                              style={styles.nudgeBtn}
+                              onPress={() => nudge(s, sp)}
+                            >
+                              <MaterialCommunityIcons
+                                name="bell-ring-outline"
+                                size={13}
+                                color={colors.brand}
+                              />
+                              <Text style={styles.nudgeText}>Ingatkan</Text>
+                            </Pressable>
+                          )}
                       </Pressable>
                     );
                   })}
@@ -366,6 +402,20 @@ export default function GroupDetailScreen() {
               );
             })}
           </View>
+        )}
+
+        {group.subscriptions.length > 0 && (
+          <Pressable
+            testID="history-button"
+            style={styles.historyBtn}
+            onPress={() =>
+              router.push({ pathname: "/group/history", params: { groupId: gid } })
+            }
+          >
+            <MaterialCommunityIcons name="history" size={20} color={colors.brand} />
+            <Text style={styles.historyText}>Riwayat pembayaran</Text>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
+          </Pressable>
         )}
 
         {/* Leave / delete */}
@@ -548,6 +598,28 @@ const styles = StyleSheet.create({
   splitName: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurface },
   splitAmount: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
   splitPaid: { color: colors.muted, textDecorationLine: "line-through" },
+  nudgeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: colors.brandTertiary,
+    paddingHorizontal: spacing.sm,
+    height: 28,
+    borderRadius: radius.pill,
+    marginLeft: spacing.xs,
+  },
+  nudgeText: { fontFamily: font.bold, fontSize: 11, color: colors.brand },
+  historyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginTop: spacing.md,
+    ...shadow.soft,
+  },
+  historyText: { flex: 1, fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
   subUnpaidPill: {
     alignSelf: "flex-start",
     backgroundColor: "#FEF3C7",

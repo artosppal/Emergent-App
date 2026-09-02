@@ -41,13 +41,22 @@ Tagline: "Biar gak ada lagi langganan yang kelewat atau lupa di-cancel."
 - "Sorotan boros" on dashboard: most_expensive (monthly-normalized) + ending_trials (trials due 0–14 days).
 - Backend tests: /app/backend/tests/test_notifin_groups.py (run with `pytest -n 0`, serial).
 
+### FASE 3 — WhatsApp + Nudge + Riwayat ✅ (done 2026-06)
+- WhatsApp via Fonnte (playbook): send_whatsapp() with SIMULATION MODE while FONNTE_TOKEN (backend/.env) empty — messages recorded in db.wa_outbox status=simulated. To go live: fill FONNTE_TOKEN + restart backend.
+- Phone: PUT /api/auth/phone (normalizes 08xx/+62 → 62-digits, 422 invalid, empty clears). public_user has phone + wa_live. Akun screen: phone row + modal, "Mode simulasi" banner when WA on & !wa_live.
+- Scheduler: asyncio loop (30 min) reminder_sweep(): personal subs → WA (premium + wa channel + phone, offsets from sub.reminders); group subs → push relay to unpaid members + WA to eligible members at H-3/H-1/H-0. Idempotent via db.notif_log unique keys.
+- Nudge: POST /groups/{gid}/subscriptions/{sid}/nudge — owner-only, unpaid target, 1x/day (429), push + WA. UI "Ingatkan" pill on unpaid split rows.
+- Riwayat: GET /groups/{gid}/history — up to 12 past periods (>= created_at) per sub, paid/unpaid splits. UI /group/history screen.
+- Tests: /app/backend/tests/test_notifin_fase3.py (15) + groups suite; run `pytest -n 0`.
+
 ## Backlog (next phases)
-- P1 FASE 3: WhatsApp notification channel (generic HTTP/webhook provider — Fonnte/Watzap/Wablas), per-subscription channel choice, message template. Group reminders via WhatsApp.
 - P1 FASE 4: Payment gateway (Midtrans/Xendit — QRIS/e-wallet/bank), pricing page, onboarding, weekly/monthly summary, social share of monthly total, referral program.
+- Optional cleanup: @app.on_event → lifespan; shadow* → boxShadow.
 
 ## Pending user inputs / build notes
-- Android push requires user to supply Firebase google-services.json + deploy/build (does not work in Expo Go/preview). Guide given to user end of Fase 2 turn; file NOT yet provided. When provided: place at /app/frontend/google-services.json and add "googleServicesFile": "./google-services.json" under expo.android in app.json.
+- Android push requires user to supply Firebase google-services.json + deploy/build (does not work in Expo Go/preview). Guide given twice; file NOT yet provided. When provided: place at /app/frontend/google-services.json and add "googleServicesFile": "./google-services.json" under expo.android in app.json.
 - EMERGENT_PUSH_KEY is placeholder; auto-set at deploy.
+- FONNTE_TOKEN (backend/.env) empty → WA simulation mode. User will provide token later.
 
 ## Next Tasks
-- Await user confirmation of Fase 2, then proceed to Fase 3 (WhatsApp channel) per user approval.
+- Await user confirmation of Fase 3, then Fase 4 (payment gateway Midtrans/Xendit, onboarding, summaries, referral) per user approval.

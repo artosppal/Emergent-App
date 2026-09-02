@@ -7,6 +7,7 @@ import {
   Pressable,
   Switch,
   Platform,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useContext } from "react";
@@ -16,7 +17,8 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "@/src/context/AuthContext";
 import { useUpgrade } from "@/src/context/UpgradeContext";
 import { useToast } from "@/src/context/ToastContext";
-import { api } from "@/src/lib/api";
+import { api, ApiError } from "@/src/lib/api";
+import { Input, Button } from "@/src/components/ui";
 import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
 
 export default function Account() {
@@ -29,6 +31,30 @@ export default function Account() {
   const isPremium = user?.plan === "premium";
   const [push, setPush] = useState(user?.notify_channels?.push ?? true);
   const [wa, setWa] = useState(user?.notify_channels?.whatsapp ?? false);
+  const [phoneModal, setPhoneModal] = useState(false);
+  const [phoneInput, setPhoneInput] = useState(user?.phone || "");
+  const [savingPhone, setSavingPhone] = useState(false);
+
+  const savePhone = async () => {
+    setSavingPhone(true);
+    try {
+      const res: any = await api.updatePhone(phoneInput.trim());
+      setUser(res.user);
+      setPhoneModal(false);
+      toast.show(
+        phoneInput.trim() ? "Nomor WhatsApp disimpan" : "Nomor WhatsApp dihapus",
+        "success",
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 422) {
+        toast.show("Nomor tidak valid. Pakai format 08xx atau +62xx", "error");
+      } else {
+        toast.show("Gagal menyimpan nomor", "error");
+      }
+    } finally {
+      setSavingPhone(false);
+    }
+  };
 
   const saveChannels = async (nextPush: boolean, nextWa: boolean) => {
     setPush(nextPush);
@@ -159,6 +185,34 @@ export default function Account() {
             thumbColor="#fff"
           />
         </View>
+        <View style={styles.divider} />
+        <Pressable
+          testID="phone-row"
+          style={styles.row}
+          onPress={() => {
+            setPhoneInput(user?.phone || "");
+            setPhoneModal(true);
+          }}
+        >
+          <View style={styles.rowIcon}>
+            <MaterialCommunityIcons name="phone" size={20} color={colors.brand} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowTitle}>Nomor WhatsApp</Text>
+            <Text style={styles.rowSub}>
+              {user?.phone ? `+${user.phone}` : "Belum diatur — tap untuk isi"}
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
+        </Pressable>
+        {isPremium && wa && !user?.wa_live && (
+          <View style={styles.simulBanner}>
+            <MaterialCommunityIcons name="flask-outline" size={16} color="#B45309" />
+            <Text style={styles.simulText}>
+              Mode simulasi — pesan WhatsApp belum benar-benar terkirim sampai token provider (Fonnte) dipasang.
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Actions */}
@@ -179,7 +233,42 @@ export default function Account() {
         </Pressable>
       </View>
 
-      <Text style={styles.version}>Notifin v1.0 · Fase 1</Text>
+      <Text style={styles.version}>Notifin v1.0 · Fase 3</Text>
+
+      {/* Phone modal */}
+      <Modal
+        visible={phoneModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhoneModal(false)}
+      >
+        <Pressable style={styles.backdrop} onPress={() => setPhoneModal(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Nomor WhatsApp</Text>
+            <Text style={styles.modalSub}>
+              Dipakai untuk reminder WhatsApp (Premium). Kosongkan untuk menghapus.
+            </Text>
+            <Input
+              testID="phone-input"
+              icon="whatsapp"
+              placeholder="08123456789"
+              value={phoneInput}
+              onChangeText={setPhoneInput}
+              keyboardType="phone-pad"
+              autoFocus
+            />
+            <Button
+              testID="save-phone-button"
+              title="Simpan"
+              onPress={savePhone}
+              loading={savingPhone}
+            />
+            <Pressable style={styles.cancelBtn} onPress={() => setPhoneModal(false)}>
+              <Text style={styles.cancelText}>Batal</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -287,6 +376,41 @@ const styles = StyleSheet.create({
   },
   lockText: { fontFamily: font.bold, fontSize: 10, color: "#B45309" },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 66 },
+  simulBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: "#FEF3C7",
+    padding: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    borderRadius: radius.md,
+  },
+  simulText: { flex: 1, fontFamily: font.medium, fontSize: fontSize.sm, color: "#92400E", lineHeight: 17 },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(24,41,36,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+  },
+  modalTitle: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: colors.onSurface },
+  modalSub: {
+    fontFamily: font.regular,
+    fontSize: fontSize.base,
+    color: colors.muted,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  cancelBtn: { alignItems: "center", paddingVertical: spacing.md, marginTop: spacing.sm },
+  cancelText: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.muted },
   actionRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg },
   actionText: { fontFamily: font.semibold, fontSize: fontSize.lg, color: colors.onSurface },
   version: {

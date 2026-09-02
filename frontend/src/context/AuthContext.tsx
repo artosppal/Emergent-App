@@ -13,6 +13,8 @@ export interface User {
   name: string;
   picture?: string | null;
   plan: "free" | "premium";
+  phone?: string | null;
+  wa_live?: boolean;
   notify_channels: { push: boolean; whatsapp: boolean };
 }
 

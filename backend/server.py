@@ -7,6 +7,8 @@ import logging
 import uuid
 import secrets
 import calendar
+import asyncio
+import re
 import bcrypt
 import jwt
 import httpx
@@ -35,6 +37,14 @@ PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
 EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
 FREE_PLAN_LIMIT = 3
+
+# WhatsApp via Fonnte (simulation mode while token is empty)
+FONNTE_TOKEN = os.environ.get("FONNTE_TOKEN", "")
+FONNTE_BASE_URL = "https://api.fonnte.com"
+
+
+def wa_live() -> bool:
+    return bool(FONNTE_TOKEN.strip())
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -97,8 +107,23 @@ def public_user(u: dict) -> dict:
         "name": u.get("name"),
         "picture": u.get("picture"),
         "plan": u.get("plan", "free"),
+        "phone": u.get("phone"),
+        "wa_live": wa_live(),
         "notify_channels": u.get("notify_channels", {"push": True, "whatsapp": False}),
     }
+
+
+def normalize_phone(value: str) -> str:
+    digits = re.sub(r"\D", "", value or "")
+    if digits.startswith("0"):
+        digits = "62" + digits[1:]
+    if not re.fullmatch(r"62[1-9][0-9]{7,12}", digits):
+        raise ValueError("invalid phone")
+    return digits
+
+
+def fmt_rp(v: float) -> str:
+    return "Rp" + f"{round(v or 0):,}".replace(",", ".")
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +291,26 @@ class ChannelsBody(BaseModel):
 async def update_channels(body: ChannelsBody, user: dict = Depends(get_current_user)):
     await db.users.update_one({"user_id": user["user_id"]},
                               {"$set": {"notify_channels": body.model_dump()}})
+    updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return {"user": public_user(updated)}
+
+
+class PhoneBody(BaseModel):
+    phone: str
+
+
+@api_router.put("/auth/phone")
+async def update_phone(body: PhoneBody, user: dict = Depends(get_current_user)):
+    raw = body.phone.strip()
+    if raw == "":
+        normalized = None
+    else:
+        try:
+            normalized = normalize_phone(raw)
+        except ValueError:
+            raise HTTPException(status_code=422,
+                                detail="Nomor WhatsApp tidak valid. Pakai format 08xx atau +62xx")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"phone": normalized}})
     updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return {"user": public_user(updated)}
 
@@ -485,8 +530,8 @@ async def advance_group_sub(s: dict) -> dict:
     return s
 
 
-def compute_splits(s: dict, members: List[dict]) -> List[dict]:
-    period = s.get("next_due_date") or ""
+def compute_splits(s: dict, members: List[dict], period: Optional[str] = None) -> List[dict]:
+    period = period or s.get("next_due_date") or ""
     payments = (s.get("payments") or {}).get(period, {})
     splits = []
     if s.get("split_type") == "custom":
@@ -763,6 +808,229 @@ async def pay_group_sub(gid: str, sid: str, body: PayBody,
 
 
 # ---------------------------------------------------------------------------
+# Fase 3: WhatsApp (Fonnte) + reminder scheduler + nudge + payment history
+# ---------------------------------------------------------------------------
+async def send_whatsapp(phone: str, message: str) -> dict:
+    record = {"phone": phone, "message": message, "created_at": now_utc().isoformat()}
+    if not wa_live():
+        record.update({"simulated": True, "status": "simulated"})
+        await db.wa_outbox.insert_one(record)
+        logger.info(f"[WA SIMULASI] -> {phone}: {message}")
+        return {"status": True, "simulated": True}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as c:
+            resp = await c.post(
+                f"{FONNTE_BASE_URL}/send",
+                headers={"Authorization": FONNTE_TOKEN.strip()},
+                data={"target": phone, "message": message, "countryCode": "0"},
+            )
+        result = resp.json()
+        ok = result.get("status") is True
+        record.update({"simulated": False,
+                       "status": "sent" if ok else "failed", "fonnte": result})
+        await db.wa_outbox.insert_one(record)
+        if not ok:
+            logger.warning(f"Fonnte rejected: {result.get('reason')}")
+        return {"status": ok, "simulated": False}
+    except Exception as e:
+        record.update({"simulated": False, "status": "error", "error": str(e)})
+        await db.wa_outbox.insert_one(record)
+        logger.warning(f"Fonnte send failed: {e}")
+        return {"status": False, "simulated": False}
+
+
+def when_label(offset: int) -> str:
+    if offset == 0:
+        return "hari ini"
+    if offset == 1:
+        return "besok"
+    return f"{offset} hari lagi (H-{offset})"
+
+
+async def claim_notif(key: str) -> bool:
+    """Idempotency claim — returns False if this notification was already sent."""
+    try:
+        await db.notif_log.insert_one({"key": key, "created_at": now_utc().isoformat()})
+        return True
+    except Exception:
+        return False
+
+
+async def reminder_sweep():
+    today = date.today()
+
+    # Personal subscriptions -> WhatsApp for premium users with WA enabled + phone.
+    users = await db.users.find(
+        {"plan": "premium", "notify_channels.whatsapp": True,
+         "phone": {"$nin": [None, ""]}}, {"_id": 0}).to_list(1000)
+    for u in users:
+        subs = await db.subscriptions.find(
+            {"user_id": u["user_id"], "deleted_at": None}, {"_id": 0}).to_list(500)
+        for s in subs:
+            try:
+                due = date.fromisoformat(s.get("next_due_date"))
+            except Exception:
+                continue
+            offset = (due - today).days
+            if offset not in (s.get("reminders") or []):
+                continue
+            key = f"wa:personal:{s['id']}:{s['next_due_date']}:{offset}"
+            if await claim_notif(key):
+                msg = (f"Halo {u.get('name') or 'kamu'}! 🔔 Langganan {s['name']} kamu "
+                       f"{fmt_rp(s.get('price', 0))} jatuh tempo {when_label(offset)}. "
+                       f"Jangan lupa bayar atau cancel ya — Notifin")
+                await send_whatsapp(u["phone"], msg)
+
+    # Group subscriptions -> push to unpaid members, WA to eligible unpaid members.
+    gsubs = await db.group_subscriptions.find(
+        {"deleted_at": None}, {"_id": 0}).to_list(2000)
+    for s in gsubs:
+        s = await advance_group_sub(s)
+        try:
+            due = date.fromisoformat(s.get("next_due_date"))
+        except Exception:
+            continue
+        offset = (due - today).days
+        if offset not in (3, 1, 0):
+            continue
+        g = await db.groups.find_one({"id": s["group_id"]}, {"_id": 0})
+        if not g:
+            continue
+        for sp in compute_splits(s, g.get("members", [])):
+            if sp["paid"] or sp["amount"] <= 0:
+                continue
+            uid = sp["user_id"]
+            body_text = (f"Bagianmu {fmt_rp(sp['amount'])} untuk {s['name']} di grup "
+                         f"\"{g['name']}\" jatuh tempo {when_label(offset)}.")
+            if await claim_notif(f"push:group:{s['id']}:{s['next_due_date']}:{offset}:{uid}"):
+                try:
+                    await send_push([uid], {"title": "Tagihan grup 🔔", "message": body_text})
+                except Exception as e:
+                    logger.info(f"group push skipped: {e}")
+            member = await db.users.find_one({"user_id": uid}, {"_id": 0})
+            if (member and member.get("plan") == "premium"
+                    and member.get("notify_channels", {}).get("whatsapp")
+                    and member.get("phone")):
+                if await claim_notif(f"wa:group:{s['id']}:{s['next_due_date']}:{offset}:{uid}"):
+                    msg = (f"Halo {member.get('name')}! 🔔 {body_text} "
+                           f"Jangan lupa bayar ya — Notifin")
+                    await send_whatsapp(member["phone"], msg)
+
+
+async def scheduler_loop():
+    await asyncio.sleep(10)
+    while True:
+        try:
+            await reminder_sweep()
+        except Exception as e:
+            logger.warning(f"reminder sweep failed: {e}")
+        await asyncio.sleep(1800)
+
+
+class NudgeBody(BaseModel):
+    user_id: str
+
+
+@api_router.post("/groups/{gid}/subscriptions/{sid}/nudge")
+async def nudge_member(gid: str, sid: str, body: NudgeBody,
+                       user: dict = Depends(get_current_user)):
+    g = await get_group_for_member(gid, user["user_id"])
+    if g["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Hanya koordinator yang bisa mengingatkan anggota")
+    if body.user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Tidak bisa mengingatkan diri sendiri")
+    if not any(m["user_id"] == body.user_id for m in g.get("members", [])):
+        raise HTTPException(status_code=404, detail="Anggota tidak ditemukan")
+    s = await db.group_subscriptions.find_one(
+        {"id": sid, "group_id": gid, "deleted_at": None}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Langganan grup tidak ditemukan")
+    s = await advance_group_sub(s)
+    sp = next((x for x in compute_splits(s, g.get("members", []))
+               if x["user_id"] == body.user_id), None)
+    if not sp:
+        raise HTTPException(status_code=404, detail="Anggota tidak ditemukan")
+    if sp["paid"]:
+        raise HTTPException(status_code=400, detail="Anggota ini sudah bayar")
+
+    key = f"nudge:{sid}:{s['next_due_date']}:{body.user_id}:{date.today().isoformat()}"
+    if not await claim_notif(key):
+        raise HTTPException(status_code=429,
+                            detail="Sudah diingatkan hari ini. Coba lagi besok ya.")
+
+    channels = []
+    body_text = (f"Bagianmu {fmt_rp(sp['amount'])} untuk {s['name']} di grup "
+                 f"\"{g['name']}\" belum dibayar. Yuk segera lunasi!")
+    try:
+        await send_push([body.user_id],
+                        {"title": f"{user.get('name')} mengingatkan 👋", "message": body_text})
+        channels.append("push")
+    except Exception as e:
+        logger.info(f"nudge push skipped: {e}")
+    target = await db.users.find_one({"user_id": body.user_id}, {"_id": 0})
+    if target and target.get("phone"):
+        res = await send_whatsapp(
+            target["phone"],
+            f"Halo {target.get('name')}! 👋 {user.get('name')} mengingatkan: {body_text} — Notifin")
+        if res.get("status"):
+            channels.append("whatsapp")
+    return {"status": "sent", "channels": channels, "wa_simulated": not wa_live()}
+
+
+def cycle_back(d: date, cycle: str) -> date:
+    if cycle == "weekly":
+        return d - timedelta(days=7)
+    if cycle == "yearly":
+        try:
+            return d.replace(year=d.year - 1)
+        except ValueError:
+            return d.replace(year=d.year - 1, day=28)
+    y, m = d.year, d.month - 1
+    if m < 1:
+        y, m = y - 1, 12
+    day = min(d.day, calendar.monthrange(y, m)[1])
+    return date(y, m, day)
+
+
+@api_router.get("/groups/{gid}/history")
+async def group_history(gid: str, user: dict = Depends(get_current_user)):
+    g = await get_group_for_member(gid, user["user_id"])
+    members = g.get("members", [])
+    subs_docs = await db.group_subscriptions.find(
+        {"group_id": gid, "deleted_at": None}, {"_id": 0}).sort("created_at", 1).to_list(200)
+
+    out = []
+    for s in subs_docs:
+        s = await advance_group_sub(s)
+        try:
+            cur = date.fromisoformat(s["next_due_date"])
+        except Exception:
+            continue
+        try:
+            created = datetime.fromisoformat(s["created_at"]).date()
+        except Exception:
+            created = None
+        cycle = s.get("billing_cycle", "monthly")
+        periods = []
+        p = cycle_back(cur, cycle)
+        count = 0
+        while count < 12 and (created is None or p >= created):
+            key = p.isoformat()
+            splits = compute_splits(s, members, period=key)
+            periods.append({
+                "period": key,
+                "splits": splits,
+                "paid_count": sum(1 for x in splits if x["paid"]),
+                "member_count": len(splits),
+            })
+            p = cycle_back(p, cycle)
+            count += 1
+        if periods:
+            out.append({"subscription": group_sub_public(s), "periods": periods})
+    return {"history": out}
+
+
+# ---------------------------------------------------------------------------
 # Push notifications (Emergent managed relay)
 # ---------------------------------------------------------------------------
 @api_router.post("/register-push", status_code=201)
@@ -822,8 +1090,10 @@ async def startup():
         await db.groups.create_index("members.user_id")
         await db.group_subscriptions.create_index("id", unique=True)
         await db.group_subscriptions.create_index("group_id")
+        await db.notif_log.create_index("key", unique=True)
     except Exception as e:
         logger.warning(f"index creation: {e}")
+    asyncio.create_task(scheduler_loop())
 
 
 app.include_router(api_router)
