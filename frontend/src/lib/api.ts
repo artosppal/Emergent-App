@@ -71,6 +71,8 @@ export const api = {
     apiFetch("/auth/channels", { method: "PUT", body: JSON.stringify(body) }),
   updatePhone: (phone: string) =>
     apiFetch("/auth/phone", { method: "PUT", body: JSON.stringify({ phone }) }),
+  updateLimit: (monthly_limit: number | null) =>
+    apiFetch("/auth/limit", { method: "PUT", body: JSON.stringify({ monthly_limit }) }),
 
   dashboard: () => apiFetch("/dashboard"),
   listSubs: (category?: string, status?: string) => {

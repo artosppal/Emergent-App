@@ -214,6 +214,9 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     color: colors.onSurface,
     paddingVertical: 14,
+    // The browser's own focus outline sits right on the text with no offset —
+    // the green border on `inputBox` above already shows focus state.
+    outlineWidth: 0,
   },
   errorText: {
     fontFamily: font.medium,

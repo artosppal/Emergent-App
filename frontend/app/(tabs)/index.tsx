@@ -88,6 +88,17 @@ export default function Dashboard() {
 
   const isEmpty = !data || data.active_count === 0;
 
+  const monthlyLimit = user?.monthly_limit || null;
+  const limitPct = monthlyLimit ? Math.round(((data?.total_this_month || 0) / monthlyLimit) * 100) : null;
+  const limitStatus: "safe" | "warning" | "over" | null =
+    limitPct === null ? null : limitPct >= 100 ? "over" : limitPct >= 85 ? "warning" : "safe";
+  const totalCardColors: [string, string] =
+    limitStatus === "over"
+      ? ["#EF4444", "#B91C1C"]
+      : limitStatus === "warning"
+        ? ["#F59E0B", "#B45309"]
+        : [colors.brand, colors.brandDark];
+
   return (
     <ScrollView
       style={styles.root}
@@ -118,7 +129,7 @@ export default function Dashboard() {
       {/* Total spend card */}
       <View style={styles.section}>
         <LinearGradient
-          colors={[colors.brand, colors.brandDark]}
+          colors={totalCardColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.totalCard}
@@ -134,6 +145,24 @@ export default function Dashboard() {
               {t("dashboard.projection", { value: formatRupiah(data?.projection_next_month || 0) })}
             </Text>
           </View>
+          {limitPct !== null && (
+            <View testID="limit-progress-row" style={styles.projRow}>
+              <MaterialCommunityIcons
+                name={
+                  limitStatus === "over"
+                    ? "alert-octagon"
+                    : limitStatus === "warning"
+                      ? "alert"
+                      : "shield-check"
+                }
+                size={15}
+                color="rgba(255,255,255,0.85)"
+              />
+              <Text style={styles.projText}>
+                {t("dashboard.limitProgress", { pct: limitPct, limit: formatRupiah(monthlyLimit || 0) })}
+              </Text>
+            </View>
+          )}
         </LinearGradient>
       </View>
 

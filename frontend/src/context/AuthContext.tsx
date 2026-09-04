@@ -16,6 +16,7 @@ export interface User {
   phone?: string | null;
   wa_live?: boolean;
   notify_channels: { push: boolean; whatsapp: boolean };
+  monthly_limit?: number | null;
 }
 
 interface AuthState {

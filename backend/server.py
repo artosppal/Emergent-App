@@ -110,6 +110,7 @@ def public_user(u: dict) -> dict:
         "phone": u.get("phone"),
         "wa_live": wa_live(),
         "notify_channels": u.get("notify_channels", {"push": True, "whatsapp": False}),
+        "monthly_limit": u.get("monthly_limit"),
     }
 
 
@@ -312,6 +313,20 @@ async def update_phone(body: PhoneBody, user: dict = Depends(get_current_user)):
             raise HTTPException(status_code=422,
                                 detail="Nomor WhatsApp tidak valid. Pakai format 08xx atau +62xx")
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"phone": normalized}})
+    updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return {"user": public_user(updated)}
+
+
+class LimitBody(BaseModel):
+    monthly_limit: Optional[float] = None   # null/0 = tanpa limit
+
+
+@api_router.put("/auth/limit")
+async def update_limit(body: LimitBody, user: dict = Depends(get_current_user)):
+    value = body.monthly_limit
+    if value is not None and value <= 0:
+        raise HTTPException(status_code=422, detail="Limit harus lebih dari 0")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"monthly_limit": value}})
     updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return {"user": public_user(updated)}
 

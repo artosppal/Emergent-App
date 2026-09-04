@@ -20,7 +20,7 @@ import { useToast } from "@/src/context/ToastContext";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { api, ApiError } from "@/src/lib/api";
 import { Input, Button } from "@/src/components/ui";
-import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
+import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
 
 export default function Account() {
   const insets = useSafeAreaInsets();
@@ -36,6 +36,11 @@ export default function Account() {
   const [phoneModal, setPhoneModal] = useState(false);
   const [phoneInput, setPhoneInput] = useState(user?.phone || "");
   const [savingPhone, setSavingPhone] = useState(false);
+  const [limitModal, setLimitModal] = useState(false);
+  const [limitInput, setLimitInput] = useState(
+    user?.monthly_limit ? String(user.monthly_limit) : "",
+  );
+  const [savingLimit, setSavingLimit] = useState(false);
 
   const savePhone = async () => {
     setSavingPhone(true);
@@ -55,6 +60,26 @@ export default function Account() {
       }
     } finally {
       setSavingPhone(false);
+    }
+  };
+
+  const saveLimit = async () => {
+    const digits = limitInput.replace(/[^0-9]/g, "");
+    const value = digits ? parseInt(digits, 10) : null;
+    setSavingLimit(true);
+    try {
+      const res: any = await api.updateLimit(value);
+      setUser(res.user);
+      setLimitModal(false);
+      toast.show(value ? t("account.limitSaved") : t("account.limitRemoved"), "success");
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 422) {
+        toast.show(t("account.limitInvalid"), "error");
+      } else {
+        toast.show(t("account.errSaveLimit"), "error");
+      }
+    } finally {
+      setSavingLimit(false);
     }
   };
 
@@ -213,6 +238,30 @@ export default function Account() {
         )}
       </View>
 
+      {/* Budget */}
+      <Text style={styles.sectionLabel}>{t("account.budgetSection")}</Text>
+      <View style={styles.card}>
+        <Pressable
+          testID="limit-row"
+          style={styles.row}
+          onPress={() => {
+            setLimitInput(user?.monthly_limit ? String(user.monthly_limit) : "");
+            setLimitModal(true);
+          }}
+        >
+          <View style={styles.rowIcon}>
+            <MaterialCommunityIcons name="chart-donut" size={20} color={colors.brand} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowTitle}>{t("account.limitRowTitle")}</Text>
+            <Text style={styles.rowSub}>
+              {user?.monthly_limit ? formatRupiah(user.monthly_limit) : t("account.limitNotSet")}
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
+        </Pressable>
+      </View>
+
       {/* Language */}
       <Text style={styles.sectionLabel}>{t("account.languageSection")}</Text>
       <View style={styles.segment}>
@@ -283,6 +332,39 @@ export default function Account() {
               loading={savingPhone}
             />
             <Pressable style={styles.cancelBtn} onPress={() => setPhoneModal(false)}>
+              <Text style={styles.cancelText}>{t("common.cancel")}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Monthly limit modal */}
+      <Modal
+        visible={limitModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLimitModal(false)}
+      >
+        <Pressable style={styles.backdrop} onPress={() => setLimitModal(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>{t("account.limitModalTitle")}</Text>
+            <Text style={styles.modalSub}>{t("account.limitModalSub")}</Text>
+            <Input
+              testID="limit-input"
+              icon="cash"
+              placeholder={t("account.limitPlaceholder")}
+              value={limitInput}
+              onChangeText={setLimitInput}
+              keyboardType="numeric"
+              autoFocus
+            />
+            <Button
+              testID="save-limit-button"
+              title={t("account.save")}
+              onPress={saveLimit}
+              loading={savingLimit}
+            />
+            <Pressable style={styles.cancelBtn} onPress={() => setLimitModal(false)}>
               <Text style={styles.cancelText}>{t("common.cancel")}</Text>
             </Pressable>
           </Pressable>

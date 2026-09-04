@@ -534,7 +534,13 @@ const styles = StyleSheet.create({
     height: 44,
   },
   rpPrefix: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.muted },
-  customInput: { flex: 1, fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
+  customInput: {
+    flex: 1,
+    fontFamily: font.bold,
+    fontSize: fontSize.base,
+    color: colors.onSurface,
+    outlineWidth: 0,
+  },
   customTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
