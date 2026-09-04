@@ -154,6 +154,7 @@ class SubscriptionBody(BaseModel):
     color: Optional[str] = None
     reminders: List[int] = Field(default_factory=lambda: [3, 1, 0])
     notes: Optional[str] = None
+    registered_with: Optional[str] = None   # email/akun/no. HP dipakai daftar (opsional)
 
 
 class RegisterPushBody(BaseModel):
@@ -330,6 +331,7 @@ def sub_public(s: dict) -> dict:
         "color": s.get("color"),
         "reminders": s.get("reminders", [3, 1, 0]),
         "notes": s.get("notes"),
+        "registered_with": s.get("registered_with"),
         "created_at": s.get("created_at"),
     }
 

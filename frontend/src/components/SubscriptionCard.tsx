@@ -15,6 +15,7 @@ export interface Subscription {
   status: string;
   reminders?: number[];
   notes?: string;
+  registered_with?: string | null;
   days_left?: number;
 }
 

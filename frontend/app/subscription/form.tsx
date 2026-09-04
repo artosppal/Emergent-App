@@ -7,7 +7,6 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
-  TextInput,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +29,25 @@ import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
 function toISO(d: Date) {
   return d.toISOString().slice(0, 10);
 }
+
+// Style for the real HTML <input type="date"> used on web — a raw DOM node,
+// so it needs plain CSS (not an RN StyleSheet), with the browser's own
+// border/outline reset so it matches the app's input look instead of the
+// browser's default control chrome.
+const webDateInputStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  border: "none",
+  outline: "none",
+  background: "transparent",
+  fontFamily: font.semibold,
+  fontSize: fontSize.lg,
+  color: colors.onSurface,
+  paddingTop: 14,
+  paddingBottom: 14,
+  paddingLeft: 0,
+  paddingRight: 0,
+};
 
 export default function SubscriptionForm() {
   const insets = useSafeAreaInsets();
@@ -62,6 +80,7 @@ export default function SubscriptionForm() {
   });
   const [reminders, setReminders] = useState<number[]>([3, 1, 0]);
   const [notes, setNotes] = useState("");
+  const [registeredWith, setRegisteredWith] = useState("");
   const [showPicker, setShowPicker] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
 
@@ -87,6 +106,7 @@ export default function SubscriptionForm() {
         setDueDate(s.next_due_date);
         setReminders(s.reminders || []);
         setNotes(s.notes || "");
+        setRegisteredWith(s.registered_with || "");
       } catch {
         toast.show(t("subscriptionForm.errLoad"), "error");
         router.back();
@@ -115,6 +135,7 @@ export default function SubscriptionForm() {
       status,
       reminders,
       notes: notes.trim() || null,
+      registered_with: registeredWith.trim() || null,
     };
     setSaving(true);
     try {
@@ -292,13 +313,14 @@ export default function SubscriptionForm() {
         {Platform.OS === "web" ? (
           <View style={styles.dateBox}>
             <MaterialCommunityIcons name="calendar" size={20} color={colors.brand} />
-            <TextInput
-              testID="due-date-input"
+            {/* Real HTML date input (not RN's TextInput) so Chrome/Android shows its
+                native calendar picker — RN Web can't force TextInput into type="date". */}
+            <input
+              data-testid="due-date-input"
+              type="date"
               value={dueDate}
-              onChangeText={setDueDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.muted}
-              style={styles.dateInput}
+              onChange={(e) => setDueDate(e.target.value)}
+              style={webDateInputStyle}
             />
           </View>
         ) : (
@@ -363,6 +385,19 @@ export default function SubscriptionForm() {
               </Pressable>
             );
           })}
+        </View>
+
+        {/* Registered with */}
+        <View style={{ marginTop: spacing.lg }}>
+          <Input
+            testID="sub-registered-with-input"
+            label={t("subscriptionForm.registeredWithLabel")}
+            icon="account-key"
+            placeholder={t("subscriptionForm.registeredWithPlaceholder")}
+            hint={t("subscriptionForm.registeredWithHint")}
+            value={registeredWith}
+            onChangeText={setRegisteredWith}
+          />
         </View>
 
         {/* Notes */}
@@ -472,13 +507,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     backgroundColor: colors.surfaceSecondary,
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
     minHeight: 54,
   },
   dateText: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurface },
-  dateInput: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.lg, color: colors.onSurface, paddingVertical: spacing.md },
 
   reminderRow: { flexDirection: "row", gap: spacing.sm },
   reminderChip: {

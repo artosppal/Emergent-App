@@ -29,6 +29,25 @@ function toISO(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+// Style for the real HTML <input type="date"> used on web — a raw DOM node,
+// so it needs plain CSS (not an RN StyleSheet), with the browser's own
+// border/outline reset so it matches the app's input look instead of the
+// browser's default control chrome.
+const webDateInputStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  border: "none",
+  outline: "none",
+  background: "transparent",
+  fontFamily: font.semibold,
+  fontSize: fontSize.lg,
+  color: colors.onSurface,
+  paddingTop: 14,
+  paddingBottom: 14,
+  paddingLeft: 0,
+  paddingRight: 0,
+};
+
 interface Member {
   user_id: string;
   name: string;
@@ -287,13 +306,14 @@ export default function GroupSubForm() {
         {Platform.OS === "web" ? (
           <View style={styles.dateBox}>
             <MaterialCommunityIcons name="calendar" size={20} color={colors.brand} />
-            <TextInput
-              testID="group-due-date-input"
+            {/* Real HTML date input (not RN's TextInput) so Chrome/Android shows its
+                native calendar picker — RN Web can't force TextInput into type="date". */}
+            <input
+              data-testid="group-due-date-input"
+              type="date"
               value={dueDate}
-              onChangeText={setDueDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.muted}
-              style={styles.dateInput}
+              onChange={(e) => setDueDate(e.target.value)}
+              style={webDateInputStyle}
             />
           </View>
         ) : (
@@ -471,13 +491,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     backgroundColor: colors.surfaceSecondary,
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
     minHeight: 54,
   },
   dateText: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurface },
-  dateInput: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.lg, color: colors.onSurface, paddingVertical: spacing.md },
 
   equalCard: {
     flexDirection: "row",
@@ -506,6 +526,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     backgroundColor: colors.surfaceTertiary,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
     width: 140,

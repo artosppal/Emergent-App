@@ -81,10 +81,11 @@ interface InputProps extends TextInputProps {
   label?: string;
   icon?: string;
   error?: string;
+  hint?: string;
   testID?: string;
 }
 
-export function Input({ label, icon, error, style, testID, ...rest }: InputProps) {
+export function Input({ label, icon, error, hint, style, testID, ...rest }: InputProps) {
   const [focused, setFocused] = React.useState(false);
   return (
     <View style={styles.inputWrap}>
@@ -113,6 +114,7 @@ export function Input({ label, icon, error, style, testID, ...rest }: InputProps
         />
       </View>
       {!!error && <Text style={styles.errorText}>{error}</Text>}
+      {!error && !!hint && <Text style={styles.hintText}>{hint}</Text>}
     </View>
   );
 }
@@ -201,8 +203,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.md,
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
     minHeight: 54,
   },
   input: {
@@ -210,12 +213,18 @@ const styles = StyleSheet.create({
     fontFamily: font.medium,
     fontSize: fontSize.lg,
     color: colors.onSurface,
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
   },
   errorText: {
     fontFamily: font.medium,
     fontSize: fontSize.sm,
     color: colors.error,
+    marginTop: spacing.xs,
+  },
+  hintText: {
+    fontFamily: font.medium,
+    fontSize: fontSize.sm,
+    color: colors.muted,
     marginTop: spacing.xs,
   },
 
