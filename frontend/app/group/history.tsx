@@ -13,8 +13,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { api } from "@/src/lib/api";
 import { useToast } from "@/src/context/ToastContext";
+import { useLanguage } from "@/src/context/LanguageContext";
 import { CategoryLogo } from "@/src/components/SubscriptionCard";
-import { cycleLabel } from "@/src/constants/categories";
 import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
 
 interface Split {
@@ -42,16 +42,17 @@ interface HistoryItem {
   periods: Period[];
 }
 
-function periodLabel(iso: string) {
+function periodLabel(iso: string, locale: string) {
   const d = new Date(iso + "T00:00:00");
   if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  return d.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
 }
 
 export default function GroupHistory() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
+  const { t, locale } = useLanguage();
   const params = useLocalSearchParams<{ groupId: string }>();
   const gid = params.groupId as string;
 
@@ -63,7 +64,7 @@ export default function GroupHistory() {
       const res: any = await api.groupHistory(gid);
       setHistory(res.history);
     } catch {
-      toast.show("Gagal memuat riwayat", "error");
+      toast.show(t("groupHistory.errLoad"), "error");
       router.back();
     } finally {
       setLoading(false);
@@ -82,7 +83,7 @@ export default function GroupHistory() {
         <Pressable testID="history-back-button" onPress={() => router.back()} style={styles.headerBtn}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle}>Riwayat Pembayaran</Text>
+        <Text style={styles.headerTitle}>{t("groupHistory.title")}</Text>
         <View style={styles.headerBtn} />
       </View>
 
@@ -95,10 +96,8 @@ export default function GroupHistory() {
           <View style={styles.emptyIcon}>
             <MaterialCommunityIcons name="history" size={48} color={colors.brand} />
           </View>
-          <Text style={styles.emptyTitle}>Belum ada riwayat</Text>
-          <Text style={styles.emptySub}>
-            Riwayat muncul setelah langganan grup melewati minimal satu periode tagihan.
-          </Text>
+          <Text style={styles.emptyTitle}>{t("groupHistory.emptyTitle")}</Text>
+          <Text style={styles.emptySub}>{t("groupHistory.emptySubtitle")}</Text>
         </View>
       ) : (
         <ScrollView
@@ -115,7 +114,7 @@ export default function GroupHistory() {
                       {h.subscription.name}
                     </Text>
                     <Text style={styles.subMeta}>
-                      {formatRupiah(h.subscription.price)} · {cycleLabel(h.subscription.billing_cycle)}
+                      {formatRupiah(h.subscription.price)} · {t(`cycles.${h.subscription.billing_cycle}`)}
                     </Text>
                   </View>
                 </View>
@@ -125,7 +124,7 @@ export default function GroupHistory() {
                     <View key={p.period} style={styles.periodBlock}>
                       <View style={styles.periodHead}>
                         <MaterialCommunityIcons name="calendar-month" size={15} color={colors.muted} />
-                        <Text style={styles.periodDate}>{periodLabel(p.period)}</Text>
+                        <Text style={styles.periodDate}>{periodLabel(p.period, locale)}</Text>
                         <View
                           style={[
                             styles.countPill,
@@ -138,7 +137,7 @@ export default function GroupHistory() {
                               { color: allPaid ? colors.onBrandSecondary : "#B45309" },
                             ]}
                           >
-                            {p.paid_count}/{p.member_count} bayar
+                            {t("groupHistory.paidCount", { paid: p.paid_count, total: p.member_count })}
                           </Text>
                         </View>
                       </View>

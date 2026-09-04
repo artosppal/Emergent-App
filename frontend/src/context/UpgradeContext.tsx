@@ -19,23 +19,25 @@ import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
 import { useAuth } from "@/src/context/AuthContext";
 import { api } from "@/src/lib/api";
 import { useToast } from "@/src/context/ToastContext";
+import { useLanguage } from "@/src/context/LanguageContext";
 
 const UpgradeContext = createContext<{ showUpgrade: () => void } | undefined>(
   undefined,
 );
-
-const BENEFITS = [
-  { icon: "infinity", text: "Langganan tanpa batas" },
-  { icon: "whatsapp", text: "Notifikasi via WhatsApp" },
-  { icon: "account-group", text: "Family & Team Sharing" },
-  { icon: "chart-box", text: "Ringkasan bulanan otomatis" },
-];
 
 export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const ref = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets();
   const { setUser } = useAuth();
   const toast = useToast();
+  const { t } = useLanguage();
+
+  const BENEFITS = [
+    { icon: "infinity", text: t("upgrade.benefitUnlimited") },
+    { icon: "whatsapp", text: t("upgrade.benefitWhatsapp") },
+    { icon: "account-group", text: t("upgrade.benefitFamily") },
+    { icon: "chart-box", text: t("upgrade.benefitSummary") },
+  ];
 
   const showUpgrade = useCallback(() => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -47,11 +49,11 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
       const res: any = await api.upgrade();
       setUser(res.user);
       ref.current?.dismiss();
-      toast.show("Selamat! Kamu sekarang Premium 🎉", "success");
+      toast.show(t("upgrade.successToast"), "success");
     } catch {
-      toast.show("Gagal upgrade, coba lagi", "error");
+      toast.show(t("upgrade.errToast"), "error");
     }
-  }, [setUser, toast]);
+  }, [setUser, toast, t]);
 
   const renderBackdrop = useCallback(
     (props: any) => (
@@ -82,11 +84,8 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
           <View style={styles.iconBadge}>
             <MaterialCommunityIcons name="crown" size={34} color="#F59E0B" />
           </View>
-          <Text style={styles.title}>Upgrade ke Premium</Text>
-          <Text style={styles.subtitle}>
-            Sudah 3 langganan aktif di paket gratis. Buka semua fitur biar gak ada
-            yang kelewat.
-          </Text>
+          <Text style={styles.title}>{t("upgrade.title")}</Text>
+          <Text style={styles.subtitle}>{t("upgrade.subtitle")}</Text>
 
           <View style={styles.benefits}>
             {BENEFITS.map((b) => (
@@ -101,9 +100,9 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
 
           <View style={styles.priceRow}>
             <Text style={styles.price}>Rp19.000</Text>
-            <Text style={styles.priceUnit}>/bulan</Text>
+            <Text style={styles.priceUnit}>{t("upgrade.perMonth")}</Text>
             <View style={styles.yearPill}>
-              <Text style={styles.yearPillText}>atau Rp149rb/tahun</Text>
+              <Text style={styles.yearPillText}>{t("upgrade.yearlyPill")}</Text>
             </View>
           </View>
 
@@ -112,14 +111,14 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
             style={({ pressed }) => [styles.cta, pressed && { opacity: 0.9 }]}
             onPress={doUpgrade}
           >
-            <Text style={styles.ctaText}>Upgrade Sekarang</Text>
+            <Text style={styles.ctaText}>{t("upgrade.cta")}</Text>
           </Pressable>
           <Pressable
             testID="upgrade-dismiss-button"
             style={styles.dismiss}
             onPress={() => ref.current?.dismiss()}
           >
-            <Text style={styles.dismissText}>Nanti aja</Text>
+            <Text style={styles.dismissText}>{t("upgrade.dismiss")}</Text>
           </Pressable>
         </BottomSheetView>
       </BottomSheetModal>

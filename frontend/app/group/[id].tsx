@@ -17,8 +17,9 @@ import * as Haptics from "expo-haptics";
 import { api, ApiError } from "@/src/lib/api";
 import { useAuth } from "@/src/context/AuthContext";
 import { useToast } from "@/src/context/ToastContext";
+import { useLanguage } from "@/src/context/LanguageContext";
 import { CategoryLogo } from "@/src/components/SubscriptionCard";
-import { getCategory, cycleLabel } from "@/src/constants/categories";
+import { getCategory } from "@/src/constants/categories";
 import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
 
 interface Split {
@@ -62,10 +63,10 @@ function initials(name?: string) {
     .toUpperCase();
 }
 
-function dueText(dateStr: string) {
+function dueText(dateStr: string, locale: string) {
   const due = new Date(dateStr + "T00:00:00");
   if (isNaN(due.getTime())) return dateStr;
-  return due.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+  return due.toLocaleDateString(locale, { day: "numeric", month: "short" });
 }
 
 export default function GroupDetailScreen() {
@@ -73,6 +74,7 @@ export default function GroupDetailScreen() {
   const router = useRouter();
   const toast = useToast();
   const { user } = useAuth();
+  const { t, locale } = useLanguage();
   const params = useLocalSearchParams<{ id: string }>();
   const gid = params.id as string;
 
@@ -85,7 +87,7 @@ export default function GroupDetailScreen() {
       const res: any = await api.getGroup(gid);
       setGroup(res.group);
     } catch {
-      toast.show("Gagal memuat grup", "error");
+      toast.show(t("groupDetail.errLoad"), "error");
       router.back();
     } finally {
       setLoading(false);
@@ -102,7 +104,7 @@ export default function GroupDetailScreen() {
     if (!group) return;
     try {
       await Share.share({
-        message: `Yuk gabung grup "${group.name}" di Notifin buat patungan langganan! Pakai kode: ${group.invite_code}`,
+        message: t("groupDetail.shareMessage", { name: group.name, code: group.invite_code }),
       });
     } catch {}
   };
@@ -111,7 +113,7 @@ export default function GroupDetailScreen() {
     if (!group) return;
     const isSelf = split.user_id === user?.user_id;
     if (!isSelf && !group.is_owner) {
-      toast.show("Hanya koordinator yang bisa ubah status anggota lain", "info");
+      toast.show(t("groupDetail.onlyCoordinator"), "info");
       return;
     }
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -136,7 +138,7 @@ export default function GroupDetailScreen() {
       await api.payGroupSub(gid, sub.id, { user_id: split.user_id, paid: !split.paid });
       load();
     } catch {
-      toast.show("Gagal menyimpan status", "error");
+      toast.show(t("groupDetail.errSaveStatus"), "error");
       load();
     }
   };
@@ -146,16 +148,16 @@ export default function GroupDetailScreen() {
     try {
       const res: any = await api.nudgeGroupSub(gid, sub.id, split.user_id);
       toast.show(
-        res.wa_simulated
-          ? `Pengingat terkirim ke ${split.name} 👋 (WA masih simulasi)`
-          : `Pengingat terkirim ke ${split.name} 👋`,
+        t(res.wa_simulated ? "groupDetail.nudgeSimulated" : "groupDetail.nudgeSent", {
+          name: split.name,
+        }),
         "success",
       );
     } catch (e) {
       if (e instanceof ApiError && e.status === 429) {
-        toast.show("Sudah diingatkan hari ini. Coba lagi besok ya.", "info");
+        toast.show(t("groupDetail.nudgeCooldown"), "info");
       } else {
-        toast.show("Gagal mengirim pengingat", "error");
+        toast.show(t("groupDetail.errNudge"), "error");
       }
     }
   };
@@ -170,14 +172,14 @@ export default function GroupDetailScreen() {
     try {
       if (group.is_owner) {
         await api.deleteGroup(gid);
-        toast.show("Grup dihapus", "info");
+        toast.show(t("groupDetail.groupDeleted"), "info");
       } else {
         await api.leaveGroup(gid);
-        toast.show("Kamu keluar dari grup", "info");
+        toast.show(t("groupDetail.leftGroup"), "info");
       }
       router.back();
     } catch {
-      toast.show("Gagal, coba lagi", "error");
+      toast.show(t("groupDetail.errGeneric"), "error");
     }
   };
 
@@ -210,25 +212,25 @@ export default function GroupDetailScreen() {
         {/* Invite code */}
         <View style={styles.inviteCard}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.inviteLabel}>Kode undangan</Text>
+            <Text style={styles.inviteLabel}>{t("groupDetail.inviteLabel")}</Text>
             <Text testID="invite-code" style={styles.inviteCode}>
               {group.invite_code}
             </Text>
           </View>
           <Pressable testID="share-code-button" style={styles.shareBtn} onPress={shareCode}>
             <MaterialCommunityIcons name="share-variant" size={18} color={colors.onBrandPrimary} />
-            <Text style={styles.shareText}>Bagikan</Text>
+            <Text style={styles.shareText}>{t("groupDetail.shareButton")}</Text>
           </Pressable>
         </View>
 
         {/* Summary */}
         <View style={styles.summaryRow}>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Total grup</Text>
+            <Text style={styles.summaryLabel}>{t("groupDetail.totalLabel")}</Text>
             <Text style={styles.summaryValue}>{formatRupiah(group.total_price)}</Text>
           </View>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Bagianmu</Text>
+            <Text style={styles.summaryLabel}>{t("groupDetail.yourShareLabel")}</Text>
             <Text style={[styles.summaryValue, { color: colors.brand }]}>
               {formatRupiah(group.my_total)}
             </Text>
@@ -255,14 +257,16 @@ export default function GroupDetailScreen() {
               ]}
             >
               {group.unpaid_members.length === 0
-                ? "Semua anggota sudah bayar periode ini 🎉"
-                : `Belum bayar: ${group.unpaid_members.join(", ")}`}
+                ? t("groupDetail.allPaid")
+                : t("groupDetail.unpaidList", { names: group.unpaid_members.join(", ") })}
             </Text>
           </View>
         )}
 
         {/* Members */}
-        <Text style={styles.sectionLabel}>Anggota ({group.members.length})</Text>
+        <Text style={styles.sectionLabel}>
+          {t("groupDetail.membersSection", { count: group.members.length })}
+        </Text>
         <View style={styles.card}>
           {group.members.map((m, i) => (
             <View key={m.user_id}>
@@ -273,11 +277,11 @@ export default function GroupDetailScreen() {
                 </View>
                 <Text style={styles.memberName} numberOfLines={1}>
                   {m.name}
-                  {m.user_id === user?.user_id ? " (kamu)" : ""}
+                  {m.user_id === user?.user_id ? t("groupDetail.you") : ""}
                 </Text>
                 {m.is_owner && (
                   <View style={styles.ownerPill}>
-                    <Text style={styles.ownerPillText}>Koordinator</Text>
+                    <Text style={styles.ownerPillText}>{t("groupDetail.coordinator")}</Text>
                   </View>
                 )}
               </View>
@@ -287,7 +291,7 @@ export default function GroupDetailScreen() {
 
         {/* Shared subscriptions */}
         <View style={styles.subsHeader}>
-          <Text style={styles.sectionLabel}>Langganan bersama</Text>
+          <Text style={styles.sectionLabel}>{t("groupDetail.sharedSubsSection")}</Text>
           {group.is_owner && (
             <Pressable
               testID="add-group-sub-button"
@@ -297,7 +301,7 @@ export default function GroupDetailScreen() {
               }
             >
               <MaterialCommunityIcons name="plus" size={16} color={colors.onBrandPrimary} />
-              <Text style={styles.addSubText}>Tambah</Text>
+              <Text style={styles.addSubText}>{t("groupDetail.addButton")}</Text>
             </Pressable>
           )}
         </View>
@@ -307,8 +311,8 @@ export default function GroupDetailScreen() {
             <MaterialCommunityIcons name="credit-card-plus-outline" size={40} color={colors.brand} />
             <Text style={styles.emptySubsText}>
               {group.is_owner
-                ? "Belum ada langganan bersama. Tap Tambah untuk mulai patungan!"
-                : "Koordinator belum menambahkan langganan bersama."}
+                ? t("groupDetail.emptySubsOwner")
+                : t("groupDetail.emptySubsMember")}
             </Text>
           </View>
         ) : (
@@ -335,13 +339,19 @@ export default function GroupDetailScreen() {
                         {s.name}
                       </Text>
                       <Text style={styles.subMeta}>
-                        {cat.label} · {cycleLabel(s.billing_cycle)} · jatuh tempo {dueText(s.next_due_date)}
+                        {t("groupDetail.subMeta", {
+                          category: t(`categories.${cat.key}`),
+                          cycle: t(`cycles.${s.billing_cycle}`),
+                          date: dueText(s.next_due_date, locale),
+                        })}
                       </Text>
                     </View>
                     <View style={{ alignItems: "flex-end" }}>
                       <Text style={styles.subPrice}>{formatRupiah(s.price)}</Text>
                       <Text style={styles.subSplitType}>
-                        {s.split_type === "custom" ? "Custom" : "Bagi rata"}
+                        {s.split_type === "custom"
+                          ? t("groupDetail.splitCustom")
+                          : t("groupDetail.splitEqual")}
                       </Text>
                     </View>
                   </Pressable>
@@ -366,7 +376,7 @@ export default function GroupDetailScreen() {
                           numberOfLines={1}
                         >
                           {sp.name}
-                          {sp.user_id === user?.user_id ? " (kamu)" : ""}
+                          {sp.user_id === user?.user_id ? t("groupDetail.you") : ""}
                         </Text>
                         <Text style={[styles.splitAmount, sp.paid && styles.splitPaid]}>
                           {formatRupiah(sp.amount)}
@@ -385,7 +395,7 @@ export default function GroupDetailScreen() {
                                 size={13}
                                 color={colors.brand}
                               />
-                              <Text style={styles.nudgeText}>Ingatkan</Text>
+                              <Text style={styles.nudgeText}>{t("groupDetail.remindButton")}</Text>
                             </Pressable>
                           )}
                       </Pressable>
@@ -394,7 +404,7 @@ export default function GroupDetailScreen() {
                   {s.unpaid_count > 0 && (
                     <View style={styles.subUnpaidPill}>
                       <Text style={styles.subUnpaidText}>
-                        {s.unpaid_count} belum bayar
+                        {t("groupDetail.unpaidPill", { count: s.unpaid_count })}
                       </Text>
                     </View>
                   )}
@@ -413,7 +423,7 @@ export default function GroupDetailScreen() {
             }
           >
             <MaterialCommunityIcons name="history" size={20} color={colors.brand} />
-            <Text style={styles.historyText}>Riwayat pembayaran</Text>
+            <Text style={styles.historyText}>{t("groupDetail.historyButton")}</Text>
             <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
           </Pressable>
         )}
@@ -427,10 +437,10 @@ export default function GroupDetailScreen() {
           />
           <Text style={styles.dangerText}>
             {confirmAction
-              ? "Tap lagi untuk konfirmasi"
+              ? t("groupDetail.confirmAgain")
               : group.is_owner
-                ? "Hapus grup"
-                : "Keluar dari grup"}
+                ? t("groupDetail.deleteGroup")
+                : t("groupDetail.leaveGroup")}
           </Text>
         </Pressable>
       </ScrollView>

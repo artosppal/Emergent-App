@@ -23,14 +23,9 @@ import { PRESETS } from "@/src/constants/presets";
 import { api, ApiError } from "@/src/lib/api";
 import { useToast } from "@/src/context/ToastContext";
 import { useUpgrade } from "@/src/context/UpgradeContext";
+import { useLanguage } from "@/src/context/LanguageContext";
 import { scheduleReminders, cancelReminders } from "@/src/utils/notifications";
 import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
-
-const REMINDER_OPTS = [
-  { label: "H-3", value: 3 },
-  { label: "H-1", value: 1 },
-  { label: "Hari-H", value: 0 },
-];
 
 function toISO(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -41,8 +36,15 @@ export default function SubscriptionForm() {
   const router = useRouter();
   const toast = useToast();
   const { showUpgrade } = useUpgrade();
+  const { t, locale } = useLanguage();
   const params = useLocalSearchParams<{ id?: string }>();
   const editing = !!params.id;
+
+  const REMINDER_OPTS = [
+    { label: t("subscriptionForm.reminderD3"), value: 3 },
+    { label: t("subscriptionForm.reminderD1"), value: 1 },
+    { label: t("subscriptionForm.reminderDay0"), value: 0 },
+  ];
 
   const [loading, setLoading] = useState(editing);
   const [saving, setSaving] = useState(false);
@@ -86,7 +88,7 @@ export default function SubscriptionForm() {
         setReminders(s.reminders || []);
         setNotes(s.notes || "");
       } catch {
-        toast.show("Gagal memuat langganan", "error");
+        toast.show(t("subscriptionForm.errLoad"), "error");
         router.back();
       } finally {
         setLoading(false);
@@ -100,7 +102,7 @@ export default function SubscriptionForm() {
 
   const save = async () => {
     if (!name.trim()) {
-      toast.show("Nama layanan wajib diisi", "error");
+      toast.show(t("subscriptionForm.errNameRequired"), "error");
       return;
     }
     const priceNum = parseFloat(price.replace(/[^0-9.]/g, "")) || 0;
@@ -125,7 +127,7 @@ export default function SubscriptionForm() {
         sub = res.subscription;
       }
       await scheduleReminders(sub);
-      toast.show(editing ? "Langganan diperbarui" : "Langganan ditambahkan 🎉", "success");
+      toast.show(editing ? t("subscriptionForm.updated") : t("subscriptionForm.created"), "success");
       router.back();
     } catch (e) {
       if (e instanceof ApiError && e.status === 403) {
@@ -133,7 +135,7 @@ export default function SubscriptionForm() {
         setTimeout(showUpgrade, 350);
         return;
       }
-      toast.show("Gagal menyimpan, coba lagi", "error");
+      toast.show(t("subscriptionForm.errSave"), "error");
     } finally {
       setSaving(false);
     }
@@ -148,17 +150,17 @@ export default function SubscriptionForm() {
     try {
       await api.deleteSub(params.id as string);
       await cancelReminders(params.id as string);
-      toast.show("Langganan dihapus", "info");
+      toast.show(t("subscriptionForm.deleted"), "info");
       router.back();
     } catch {
-      toast.show("Gagal menghapus", "error");
+      toast.show(t("subscriptionForm.errDelete"), "error");
     }
   };
 
   const dueDisplay = (() => {
     const d = new Date(dueDate + "T00:00:00");
     if (isNaN(d.getTime())) return dueDate;
-    return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    return d.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   })();
 
   if (loading) {
@@ -176,7 +178,9 @@ export default function SubscriptionForm() {
         <Pressable testID="close-form-button" onPress={() => router.back()} style={styles.headerBtn}>
           <MaterialCommunityIcons name="close" size={24} color={colors.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle}>{editing ? "Edit Langganan" : "Tambah Langganan"}</Text>
+        <Text style={styles.headerTitle}>
+          {editing ? t("subscriptionForm.editTitle") : t("subscriptionForm.createTitle")}
+        </Text>
         <View style={styles.headerBtn} />
       </View>
 
@@ -188,7 +192,7 @@ export default function SubscriptionForm() {
       >
         {!editing && (
           <>
-            <Text style={styles.label}>Pilihan cepat</Text>
+            <Text style={styles.label}>{t("subscriptionForm.quickPick")}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -218,15 +222,15 @@ export default function SubscriptionForm() {
 
         <Input
           testID="sub-name-input"
-          label="Nama layanan"
+          label={t("subscriptionForm.nameLabel")}
           icon="tag"
-          placeholder="Netflix, Spotify, dll"
+          placeholder={t("subscriptionForm.namePlaceholder")}
           value={name}
           onChangeText={setName}
         />
 
         {/* Category */}
-        <Text style={styles.label}>Kategori</Text>
+        <Text style={styles.label}>{t("subscriptionForm.categoryLabel")}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
           {CATEGORIES.map((c) => {
             const active = category === c.key;
@@ -242,7 +246,9 @@ export default function SubscriptionForm() {
                   size={18}
                   color={active ? c.color : colors.muted}
                 />
-                <Text style={[styles.catChipText, active && { color: c.color }]}>{c.label}</Text>
+                <Text style={[styles.catChipText, active && { color: c.color }]}>
+                  {t(`categories.${c.key}`)}
+                </Text>
               </Pressable>
             );
           })}
@@ -252,7 +258,7 @@ export default function SubscriptionForm() {
         <View style={{ marginTop: spacing.lg }}>
           <Input
             testID="sub-price-input"
-            label="Harga (Rp)"
+            label={t("subscriptionForm.priceLabel")}
             icon="cash"
             placeholder="0"
             value={price}
@@ -262,7 +268,7 @@ export default function SubscriptionForm() {
         </View>
 
         {/* Billing cycle */}
-        <Text style={styles.label}>Siklus tagihan</Text>
+        <Text style={styles.label}>{t("subscriptionForm.cycleLabel")}</Text>
         <View style={styles.segment}>
           {BILLING_CYCLES.map((c) => {
             const active = cycle === c.key;
@@ -273,14 +279,16 @@ export default function SubscriptionForm() {
                 onPress={() => setCycle(c.key)}
                 style={[styles.segmentItem, active && styles.segmentActive]}
               >
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{c.label}</Text>
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                  {t(`cycles.${c.key}`)}
+                </Text>
               </Pressable>
             );
           })}
         </View>
 
         {/* Due date */}
-        <Text style={styles.label}>Jatuh tempo berikutnya</Text>
+        <Text style={styles.label}>{t("subscriptionForm.dueDateLabel")}</Text>
         {Platform.OS === "web" ? (
           <View style={styles.dateBox}>
             <MaterialCommunityIcons name="calendar" size={20} color={colors.brand} />
@@ -313,7 +321,7 @@ export default function SubscriptionForm() {
         )}
 
         {/* Status */}
-        <Text style={styles.label}>Status</Text>
+        <Text style={styles.label}>{t("subscriptionForm.statusLabel")}</Text>
         <View style={styles.segment}>
           {STATUS_OPTIONS.map((c) => {
             const active = status === c.key;
@@ -324,14 +332,16 @@ export default function SubscriptionForm() {
                 onPress={() => setStatus(c.key)}
                 style={[styles.segmentItem, active && styles.segmentActive]}
               >
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{c.label}</Text>
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                  {t(`status.${c.key}`)}
+                </Text>
               </Pressable>
             );
           })}
         </View>
 
         {/* Reminders */}
-        <Text style={styles.label}>Ingatkan saya</Text>
+        <Text style={styles.label}>{t("subscriptionForm.remindMeLabel")}</Text>
         <View style={styles.reminderRow}>
           {REMINDER_OPTS.map((r) => {
             const active = reminders.includes(r.value);
@@ -359,9 +369,9 @@ export default function SubscriptionForm() {
         <View style={{ marginTop: spacing.lg }}>
           <Input
             testID="sub-notes-input"
-            label="Catatan (opsional)"
+            label={t("subscriptionForm.notesLabel")}
             icon="note-text"
-            placeholder="mis. akun bareng si A"
+            placeholder={t("subscriptionForm.notesPlaceholder")}
             value={notes}
             onChangeText={setNotes}
           />
@@ -371,7 +381,7 @@ export default function SubscriptionForm() {
           <Pressable testID="delete-button" style={styles.deleteBtn} onPress={doDelete}>
             <MaterialCommunityIcons name="trash-can-outline" size={20} color={colors.error} />
             <Text style={styles.deleteText}>
-              {confirmDelete ? "Tap lagi untuk konfirmasi hapus" : "Hapus langganan"}
+              {confirmDelete ? t("subscriptionForm.confirmDelete") : t("subscriptionForm.deleteButton")}
             </Text>
           </Pressable>
         )}
@@ -382,7 +392,7 @@ export default function SubscriptionForm() {
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
           <Button
             testID="save-subscription-button"
-            title={editing ? "Simpan Perubahan" : "Simpan Langganan"}
+            title={editing ? t("subscriptionForm.saveChanges") : t("subscriptionForm.saveNew")}
             onPress={save}
             loading={saving}
           />

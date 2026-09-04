@@ -16,6 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/context/AuthContext";
+import { useLanguage } from "@/src/context/LanguageContext";
 import { SubscriptionCard, Subscription, CategoryLogo } from "@/src/components/SubscriptionCard";
 import { SectionTitle, EmptyState, Button } from "@/src/components/ui";
 import { getCategory } from "@/src/constants/categories";
@@ -38,6 +39,7 @@ export default function Dashboard() {
   const tabH = useContext(BottomTabBarHeightContext) ?? 64 + insets.bottom;
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useLanguage();
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,13 +69,13 @@ export default function Dashboard() {
 
   const greeting = () => {
     const h = new Date().getHours();
-    if (h < 11) return "Selamat pagi";
-    if (h < 15) return "Selamat siang";
-    if (h < 19) return "Selamat sore";
-    return "Selamat malam";
+    if (h < 11) return t("dashboard.greetingMorning");
+    if (h < 15) return t("dashboard.greetingAfternoon");
+    if (h < 19) return t("dashboard.greetingEvening");
+    return t("dashboard.greetingNight");
   };
 
-  const firstName = (user?.name || "").split(" ")[0] || "kamu";
+  const firstName = (user?.name || "").split(" ")[0] || t("dashboard.you");
   const maxCat = data?.by_category?.[0]?.total || 1;
 
   if (loading) {
@@ -102,7 +104,7 @@ export default function Dashboard() {
         {data?.plan === "premium" ? (
           <View style={styles.premiumPill}>
             <MaterialCommunityIcons name="crown" size={14} color="#B45309" />
-            <Text style={styles.premiumPillText}>Premium</Text>
+            <Text style={styles.premiumPillText}>{t("dashboard.premium")}</Text>
           </View>
         ) : (
           <View style={styles.freePill}>
@@ -122,14 +124,14 @@ export default function Dashboard() {
           style={styles.totalCard}
         >
           <View style={styles.totalTopRow}>
-            <Text style={styles.totalLabel}>Pengeluaran bulan ini</Text>
+            <Text style={styles.totalLabel}>{t("dashboard.totalLabel")}</Text>
             <MaterialCommunityIcons name="wallet" size={20} color="rgba(255,255,255,0.85)" />
           </View>
           <Text style={styles.totalValue}>{formatRupiah(data?.total_this_month || 0)}</Text>
           <View style={styles.projRow}>
             <MaterialCommunityIcons name="chart-line" size={15} color="rgba(255,255,255,0.85)" />
             <Text style={styles.projText}>
-              Proyeksi bulan depan {formatRupiah(data?.projection_next_month || 0)}
+              {t("dashboard.projection", { value: formatRupiah(data?.projection_next_month || 0) })}
             </Text>
           </View>
         </LinearGradient>
@@ -139,12 +141,12 @@ export default function Dashboard() {
         <View style={{ marginTop: spacing.lg }}>
           <EmptyState
             icon="rocket-launch"
-            title="Belum ada langganan"
-            subtitle="Yuk tambah langganan pertamamu biar gak ada tagihan yang kelewat!"
+            title={t("dashboard.emptyTitle")}
+            subtitle={t("dashboard.emptySubtitle")}
             cta={
               <Button
                 testID="empty-add-button"
-                title="Tambah Langganan"
+                title={t("dashboard.addButton")}
                 icon="plus"
                 onPress={() => router.push("/subscription/form")}
               />
@@ -156,7 +158,7 @@ export default function Dashboard() {
           {/* Ringkasan boros */}
           {(data?.most_expensive || (data?.ending_trials && data.ending_trials.length > 0)) && (
             <View style={styles.section}>
-              <SectionTitle title="Sorotan boros" />
+              <SectionTitle title={t("dashboard.highlightSection")} />
               <View style={{ gap: spacing.md }}>
                 {data?.most_expensive && (
                   <Pressable
@@ -171,39 +173,42 @@ export default function Dashboard() {
                   >
                     <CategoryLogo category={data.most_expensive.category} size={44} />
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.borosLabel}>💸 Paling mahal</Text>
+                      <Text style={styles.borosLabel}>{t("dashboard.mostExpensiveLabel")}</Text>
                       <Text style={styles.borosName} numberOfLines={1}>
                         {data.most_expensive.name}
                       </Text>
                       <Text style={styles.borosMeta}>
-                        {formatRupiah(data.most_expensive.monthly_cost)}/bulan ·{" "}
-                        {Math.round(
-                          (data.most_expensive.monthly_cost / (data.total_this_month || 1)) * 100,
-                        )}
-                        % dari total
+                        {t("dashboard.mostExpensiveMeta", {
+                          price: formatRupiah(data.most_expensive.monthly_cost),
+                          pct: Math.round(
+                            (data.most_expensive.monthly_cost / (data.total_this_month || 1)) * 100,
+                          ),
+                        })}
                       </Text>
                     </View>
                     <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
                   </Pressable>
                 )}
-                {data?.ending_trials?.map((t) => (
+                {data?.ending_trials?.map((tr) => (
                   <Pressable
-                    key={t.id}
-                    testID={`trial-warning-${t.id}`}
+                    key={tr.id}
+                    testID={`trial-warning-${tr.id}`}
                     onPress={() =>
-                      router.push({ pathname: "/subscription/form", params: { id: t.id } })
+                      router.push({ pathname: "/subscription/form", params: { id: tr.id } })
                     }
                     style={({ pressed }) => [styles.trialWarnCard, pressed && { opacity: 0.9 }]}
                   >
                     <MaterialCommunityIcons name="timer-sand" size={22} color="#B45309" />
                     <Text style={styles.trialWarnText} numberOfLines={2}>
-                      Trial <Text style={{ fontFamily: font.extrabold }}>{t.name}</Text>{" "}
-                      {t.days_left === 0
-                        ? "berakhir hari ini!"
-                        : t.days_left === 1
-                          ? "berakhir besok!"
-                          : `berakhir ${t.days_left} hari lagi`}{" "}
-                      — cancel kalau gak dipakai.
+                      {t("dashboard.trialWarning", {
+                        name: tr.name,
+                        ending:
+                          tr.days_left === 0
+                            ? t("dashboard.trialEndsToday")
+                            : tr.days_left === 1
+                              ? t("dashboard.trialEndsTomorrow")
+                              : t("dashboard.trialEndsIn", { days: tr.days_left ?? 0 }),
+                      })}
                     </Text>
                     <MaterialCommunityIcons name="chevron-right" size={20} color="#B45309" />
                   </Pressable>
@@ -214,7 +219,7 @@ export default function Dashboard() {
 
           {/* Upcoming */}
           <View style={styles.section}>
-            <SectionTitle title="Mendekati jatuh tempo" />
+            <SectionTitle title={t("dashboard.upcomingSection")} />
             {data && data.upcoming.length > 0 ? (
               <View style={{ gap: spacing.md }}>
                 {data.upcoming.map((s) => (
@@ -228,9 +233,7 @@ export default function Dashboard() {
             ) : (
               <View style={styles.calmCard}>
                 <MaterialCommunityIcons name="check-circle" size={22} color={colors.success} />
-                <Text style={styles.calmText}>
-                  Aman! Gak ada yang jatuh tempo dalam 7 hari ke depan.
-                </Text>
+                <Text style={styles.calmText}>{t("dashboard.calmText")}</Text>
               </View>
             )}
           </View>
@@ -238,7 +241,7 @@ export default function Dashboard() {
           {/* By category */}
           {data && data.by_category.length > 0 && (
             <View style={styles.section}>
-              <SectionTitle title="Pengeluaran per kategori" />
+              <SectionTitle title={t("dashboard.categorySection")} />
               <View style={styles.chartCard}>
                 {data.by_category.map((c) => {
                   const cat = getCategory(c.category);
@@ -249,7 +252,7 @@ export default function Dashboard() {
                         <View style={[styles.catDot, { backgroundColor: cat.color }]}>
                           <MaterialCommunityIcons name={cat.icon as any} size={13} color="#fff" />
                         </View>
-                        <Text style={styles.chartLabel}>{cat.label}</Text>
+                        <Text style={styles.chartLabel}>{t(`categories.${cat.key}`)}</Text>
                         <Text style={styles.chartValue}>{formatRupiah(c.total)}</Text>
                       </View>
                       <View style={styles.track}>

@@ -14,6 +14,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Button, Input } from "@/src/components/ui";
 import { useAuth } from "@/src/context/AuthContext";
 import { useToast } from "@/src/context/ToastContext";
+import { useLanguage } from "@/src/context/LanguageContext";
 import { ApiError } from "@/src/lib/api";
 import { colors, font, fontSize, radius, spacing } from "@/src/theme";
 
@@ -24,6 +25,7 @@ export default function Login() {
   const insets = useSafeAreaInsets();
   const { login, register, loginWithGoogle } = useAuth();
   const toast = useToast();
+  const { t } = useLanguage();
 
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
@@ -36,15 +38,15 @@ export default function Login() {
 
   const submit = async () => {
     if (!email.trim() || !password) {
-      toast.show("Email dan password wajib diisi", "error");
+      toast.show(t("auth.errEmailPassword"), "error");
       return;
     }
     if (isRegister && !name.trim()) {
-      toast.show("Nama wajib diisi", "error");
+      toast.show(t("auth.errName"), "error");
       return;
     }
     if (password.length < 6) {
-      toast.show("Password minimal 6 karakter", "error");
+      toast.show(t("auth.errPasswordLen"), "error");
       return;
     }
     setLoading(true);
@@ -55,7 +57,7 @@ export default function Login() {
         await login(email.trim(), password);
       }
     } catch (e) {
-      const msg = e instanceof ApiError ? e.message : "Terjadi kesalahan";
+      const msg = e instanceof ApiError ? e.message : t("auth.errGeneric");
       toast.show(msg, "error");
     } finally {
       setLoading(false);
@@ -67,7 +69,7 @@ export default function Login() {
     try {
       await loginWithGoogle();
     } catch {
-      toast.show("Login Google gagal, coba lagi", "error");
+      toast.show(t("auth.errGoogle"), "error");
     } finally {
       setGLoading(false);
     }
@@ -92,29 +94,25 @@ export default function Login() {
               <MaterialCommunityIcons name="bell-ring" size={26} color={colors.brand} />
             </View>
             <Text style={styles.heroTitle}>Notifin</Text>
-            <Text style={styles.heroTagline}>
-              Biar gak ada lagi langganan yang kelewat atau lupa di-cancel.
-            </Text>
+            <Text style={styles.heroTagline}>{t("auth.heroTagline")}</Text>
           </View>
         </View>
 
         <View style={styles.form}>
           <Text style={styles.formTitle}>
-            {isRegister ? "Buat akun baru" : "Selamat datang kembali"}
+            {isRegister ? t("auth.formTitleRegister") : t("auth.formTitleLogin")}
           </Text>
           <Text style={styles.formSub}>
-            {isRegister
-              ? "Mulai lacak semua langgananmu di satu tempat."
-              : "Masuk untuk lanjut kelola langgananmu."}
+            {isRegister ? t("auth.formSubRegister") : t("auth.formSubLogin")}
           </Text>
 
           <View style={{ marginTop: spacing.xl }}>
             {isRegister && (
               <Input
                 testID="name-input"
-                label="Nama"
+                label={t("auth.nameLabel")}
                 icon="account"
-                placeholder="Nama kamu"
+                placeholder={t("auth.namePlaceholder")}
                 value={name}
                 onChangeText={setName}
                 autoCapitalize="words"
@@ -122,9 +120,9 @@ export default function Login() {
             )}
             <Input
               testID="email-input"
-              label="Email"
+              label={t("auth.emailLabel")}
               icon="email"
-              placeholder="nama@email.com"
+              placeholder={t("auth.emailPlaceholder")}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -133,9 +131,9 @@ export default function Login() {
             />
             <Input
               testID="password-input"
-              label="Password"
+              label={t("auth.passwordLabel")}
               icon="lock"
-              placeholder="Min. 6 karakter"
+              placeholder={t("auth.passwordPlaceholder")}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -143,20 +141,20 @@ export default function Login() {
 
             <Button
               testID="submit-button"
-              title={isRegister ? "Daftar" : "Masuk"}
+              title={isRegister ? t("auth.submitRegister") : t("auth.submitLogin")}
               onPress={submit}
               loading={loading}
             />
 
             <View style={styles.divider}>
               <View style={styles.line} />
-              <Text style={styles.dividerText}>atau</Text>
+              <Text style={styles.dividerText}>{t("common.or")}</Text>
               <View style={styles.line} />
             </View>
 
             <Button
               testID="google-button"
-              title="Lanjutkan dengan Google"
+              title={t("auth.google")}
               icon="google"
               variant="secondary"
               onPress={google}
@@ -169,8 +167,10 @@ export default function Login() {
               style={styles.toggle}
             >
               <Text style={styles.toggleText}>
-                {isRegister ? "Sudah punya akun? " : "Belum punya akun? "}
-                <Text style={styles.toggleLink}>{isRegister ? "Masuk" : "Daftar"}</Text>
+                {isRegister ? t("auth.toggleToLogin") : t("auth.toggleToRegister")}
+                <Text style={styles.toggleLink}>
+                  {isRegister ? t("auth.linkLogin") : t("auth.linkRegister")}
+                </Text>
               </Text>
             </Pressable>
           </View>

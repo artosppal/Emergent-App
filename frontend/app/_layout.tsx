@@ -17,6 +17,7 @@ import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/context/AuthContext";
 import { ToastProvider } from "@/src/context/ToastContext";
 import { UpgradeProvider } from "@/src/context/UpgradeContext";
+import { LanguageProvider } from "@/src/context/LanguageContext";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
@@ -114,14 +115,16 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <KeyboardProvider>
         <BottomSheetModalProvider>
-          <AuthProvider>
-            <ToastProvider>
-              <UpgradeProvider>
-                <StatusBar style="dark" />
-                <RootNavigator />
-              </UpgradeProvider>
-            </ToastProvider>
-          </AuthProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <ToastProvider>
+                <UpgradeProvider>
+                  <StatusBar style="dark" />
+                  <RootNavigator />
+                </UpgradeProvider>
+              </ToastProvider>
+            </AuthProvider>
+          </LanguageProvider>
         </BottomSheetModalProvider>
         </KeyboardProvider>
       </SafeAreaProvider>

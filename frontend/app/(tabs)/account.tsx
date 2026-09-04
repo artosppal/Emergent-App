@@ -17,6 +17,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "@/src/context/AuthContext";
 import { useUpgrade } from "@/src/context/UpgradeContext";
 import { useToast } from "@/src/context/ToastContext";
+import { useLanguage } from "@/src/context/LanguageContext";
 import { api, ApiError } from "@/src/lib/api";
 import { Input, Button } from "@/src/components/ui";
 import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
@@ -27,6 +28,7 @@ export default function Account() {
   const { user, logout, setUser } = useAuth();
   const { showUpgrade } = useUpgrade();
   const toast = useToast();
+  const { t, language, setLanguage } = useLanguage();
 
   const isPremium = user?.plan === "premium";
   const [push, setPush] = useState(user?.notify_channels?.push ?? true);
@@ -42,14 +44,14 @@ export default function Account() {
       setUser(res.user);
       setPhoneModal(false);
       toast.show(
-        phoneInput.trim() ? "Nomor WhatsApp disimpan" : "Nomor WhatsApp dihapus",
+        phoneInput.trim() ? t("account.phoneSaved") : t("account.phoneRemoved"),
         "success",
       );
     } catch (e) {
       if (e instanceof ApiError && e.status === 422) {
-        toast.show("Nomor tidak valid. Pakai format 08xx atau +62xx", "error");
+        toast.show(t("account.phoneInvalid"), "error");
       } else {
-        toast.show("Gagal menyimpan nomor", "error");
+        toast.show(t("account.errSavePhone"), "error");
       }
     } finally {
       setSavingPhone(false);
@@ -63,7 +65,7 @@ export default function Account() {
       const res: any = await api.updateChannels({ push: nextPush, whatsapp: nextWa });
       setUser(res.user);
     } catch {
-      toast.show("Gagal menyimpan pengaturan", "error");
+      toast.show(t("account.errSaveSettings"), "error");
     }
   };
 
@@ -79,7 +81,7 @@ export default function Account() {
     try {
       const res: any = await api.downgrade();
       setUser(res.user);
-      toast.show("Paket kembali ke Free", "info");
+      toast.show(t("account.downgradedToast"), "info");
     } catch {}
   };
 
@@ -96,7 +98,7 @@ export default function Account() {
       contentContainerStyle={{ paddingTop: insets.top + spacing.xl, paddingBottom: tabH + spacing.xl }}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.screenTitle}>Akun</Text>
+      <Text style={styles.screenTitle}>{t("account.title")}</Text>
 
       {/* Profile */}
       <View style={styles.profile}>
@@ -116,8 +118,8 @@ export default function Account() {
             <MaterialCommunityIcons name="crown" size={22} color="#B45309" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.premiumTitle}>Kamu Premium 🎉</Text>
-            <Text style={styles.premiumSub}>Langganan tanpa batas & notifikasi WhatsApp aktif.</Text>
+            <Text style={styles.premiumTitle}>{t("account.premiumTitle")}</Text>
+            <Text style={styles.premiumSub}>{t("account.premiumSubtitle")}</Text>
           </View>
         </View>
       ) : (
@@ -129,10 +131,8 @@ export default function Account() {
             style={styles.upgradeCard}
           >
             <View style={{ flex: 1 }}>
-              <Text style={styles.upgradeTitle}>Upgrade ke Premium</Text>
-              <Text style={styles.upgradeSub}>
-                Langganan tak terbatas, WhatsApp reminder & Family Sharing.
-              </Text>
+              <Text style={styles.upgradeTitle}>{t("account.upgradeTitle")}</Text>
+              <Text style={styles.upgradeSub}>{t("account.upgradeSubtitle")}</Text>
             </View>
             <View style={styles.upgradeArrow}>
               <MaterialCommunityIcons name="crown" size={22} color={colors.brand} />
@@ -142,15 +142,15 @@ export default function Account() {
       )}
 
       {/* Notification channels */}
-      <Text style={styles.sectionLabel}>Notifikasi</Text>
+      <Text style={styles.sectionLabel}>{t("account.notificationsSection")}</Text>
       <View style={styles.card}>
         <View style={styles.row}>
           <View style={styles.rowIcon}>
             <MaterialCommunityIcons name="cellphone" size={20} color={colors.brand} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.rowTitle}>Push HP</Text>
-            <Text style={styles.rowSub}>Reminder H-3, H-1 & hari-H</Text>
+            <Text style={styles.rowTitle}>{t("account.pushTitle")}</Text>
+            <Text style={styles.rowSub}>{t("account.pushSubtitle")}</Text>
           </View>
           <Switch
             testID="toggle-push"
@@ -167,15 +167,15 @@ export default function Account() {
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-              <Text style={styles.rowTitle}>WhatsApp</Text>
+              <Text style={styles.rowTitle}>{t("account.waTitle")}</Text>
               {!isPremium && (
                 <View style={styles.lockPill}>
                   <MaterialCommunityIcons name="lock" size={10} color="#B45309" />
-                  <Text style={styles.lockText}>Premium</Text>
+                  <Text style={styles.lockText}>{t("account.waLock")}</Text>
                 </View>
               )}
             </View>
-            <Text style={styles.rowSub}>Kirim reminder juga ke WhatsApp</Text>
+            <Text style={styles.rowSub}>{t("account.waSubtitle")}</Text>
           </View>
           <Switch
             testID="toggle-whatsapp"
@@ -198,9 +198,9 @@ export default function Account() {
             <MaterialCommunityIcons name="phone" size={20} color={colors.brand} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.rowTitle}>Nomor WhatsApp</Text>
+            <Text style={styles.rowTitle}>{t("account.phoneRowTitle")}</Text>
             <Text style={styles.rowSub}>
-              {user?.phone ? `+${user.phone}` : "Belum diatur — tap untuk isi"}
+              {user?.phone ? `+${user.phone}` : t("account.phoneNotSet")}
             </Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
@@ -208,32 +208,53 @@ export default function Account() {
         {isPremium && wa && !user?.wa_live && (
           <View style={styles.simulBanner}>
             <MaterialCommunityIcons name="flask-outline" size={16} color="#B45309" />
-            <Text style={styles.simulText}>
-              Mode simulasi — pesan WhatsApp belum benar-benar terkirim sampai token provider (Fonnte) dipasang.
-            </Text>
+            <Text style={styles.simulText}>{t("account.simulationBanner")}</Text>
           </View>
         )}
       </View>
 
+      {/* Language */}
+      <Text style={styles.sectionLabel}>{t("account.languageSection")}</Text>
+      <View style={styles.segment}>
+        <Pressable
+          testID="language-id-button"
+          onPress={() => setLanguage("id")}
+          style={[styles.segmentItem, language === "id" && styles.segmentActive]}
+        >
+          <Text style={[styles.segmentText, language === "id" && styles.segmentTextActive]}>
+            {t("account.languageId")}
+          </Text>
+        </Pressable>
+        <Pressable
+          testID="language-en-button"
+          onPress={() => setLanguage("en")}
+          style={[styles.segmentItem, language === "en" && styles.segmentActive]}
+        >
+          <Text style={[styles.segmentText, language === "en" && styles.segmentTextActive]}>
+            {t("account.languageEn")}
+          </Text>
+        </Pressable>
+      </View>
+
       {/* Actions */}
-      <Text style={styles.sectionLabel}>Lainnya</Text>
+      <Text style={styles.sectionLabel}>{t("account.otherSection")}</Text>
       <View style={styles.card}>
         {isPremium && (
           <>
             <Pressable testID="downgrade-button" style={styles.actionRow} onPress={downgrade}>
               <MaterialCommunityIcons name="arrow-down-circle-outline" size={20} color={colors.muted} />
-              <Text style={styles.actionText}>Kembali ke paket Free</Text>
+              <Text style={styles.actionText}>{t("account.downgradeAction")}</Text>
             </Pressable>
             <View style={styles.divider} />
           </>
         )}
         <Pressable testID="logout-button" style={styles.actionRow} onPress={logout}>
           <MaterialCommunityIcons name="logout" size={20} color={colors.error} />
-          <Text style={[styles.actionText, { color: colors.error }]}>Keluar</Text>
+          <Text style={[styles.actionText, { color: colors.error }]}>{t("account.logoutAction")}</Text>
         </Pressable>
       </View>
 
-      <Text style={styles.version}>Notifin v1.0 · Fase 3</Text>
+      <Text style={styles.version}>{t("account.version")}</Text>
 
       {/* Phone modal */}
       <Modal
@@ -244,14 +265,12 @@ export default function Account() {
       >
         <Pressable style={styles.backdrop} onPress={() => setPhoneModal(false)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>Nomor WhatsApp</Text>
-            <Text style={styles.modalSub}>
-              Dipakai untuk reminder WhatsApp (Premium). Kosongkan untuk menghapus.
-            </Text>
+            <Text style={styles.modalTitle}>{t("account.phoneModalTitle")}</Text>
+            <Text style={styles.modalSub}>{t("account.phoneModalSub")}</Text>
             <Input
               testID="phone-input"
               icon="whatsapp"
-              placeholder="08123456789"
+              placeholder={t("account.phonePlaceholder")}
               value={phoneInput}
               onChangeText={setPhoneInput}
               keyboardType="phone-pad"
@@ -259,12 +278,12 @@ export default function Account() {
             />
             <Button
               testID="save-phone-button"
-              title="Simpan"
+              title={t("account.save")}
               onPress={savePhone}
               loading={savingPhone}
             />
             <Pressable style={styles.cancelBtn} onPress={() => setPhoneModal(false)}>
-              <Text style={styles.cancelText}>Batal</Text>
+              <Text style={styles.cancelText}>{t("common.cancel")}</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -354,6 +373,18 @@ const styles = StyleSheet.create({
     ...shadow.soft,
     overflow: "hidden",
   },
+  segment: {
+    flexDirection: "row",
+    marginHorizontal: spacing.xl,
+    backgroundColor: colors.surfaceTertiary,
+    borderRadius: radius.md,
+    padding: 4,
+    gap: 4,
+  },
+  segmentItem: { flex: 1, paddingVertical: spacing.md, borderRadius: radius.sm, alignItems: "center" },
+  segmentActive: { backgroundColor: colors.surfaceSecondary, ...shadow.soft },
+  segmentText: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.muted },
+  segmentTextActive: { color: colors.brand },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg },
   rowIcon: {
     width: 38,

@@ -19,17 +19,11 @@ import * as Haptics from "expo-haptics";
 import { api, ApiError } from "@/src/lib/api";
 import { useAuth } from "@/src/context/AuthContext";
 import { useUpgrade } from "@/src/context/UpgradeContext";
+import { useLanguage } from "@/src/context/LanguageContext";
 import { SubscriptionCard, Subscription } from "@/src/components/SubscriptionCard";
 import { EmptyState } from "@/src/components/ui";
 import { CATEGORIES } from "@/src/constants/categories";
 import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
-
-const CAT_FILTERS = [{ key: "all", label: "Semua" }, ...CATEGORIES.map((c) => ({ key: c.key, label: c.label }))];
-const STATUS_FILTERS = [
-  { key: "all", label: "Semua status" },
-  { key: "paid", label: "Sudah Bayar" },
-  { key: "trial", label: "Trial" },
-];
 
 export default function Subscriptions() {
   const insets = useSafeAreaInsets();
@@ -37,6 +31,23 @@ export default function Subscriptions() {
   const router = useRouter();
   const { user } = useAuth();
   const { showUpgrade } = useUpgrade();
+  const { t } = useLanguage();
+
+  const CAT_FILTERS = useMemo(
+    () => [
+      { key: "all", label: t("subscriptions.all") },
+      ...CATEGORIES.map((c) => ({ key: c.key, label: t(`categories.${c.key}`) })),
+    ],
+    [t],
+  );
+  const STATUS_FILTERS = useMemo(
+    () => [
+      { key: "all", label: t("subscriptions.allStatus") },
+      { key: "paid", label: t("status.paid") },
+      { key: "trial", label: t("subscriptions.statusTrial") },
+    ],
+    [t],
+  );
 
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,9 +99,9 @@ export default function Subscriptions() {
           <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
         )}
         <View style={styles.headerTop}>
-          <Text style={styles.title}>Langganan</Text>
+          <Text style={styles.title}>{t("subscriptions.title")}</Text>
           {user?.plan === "free" && (
-            <Text style={styles.countText}>{activeCount}/3 aktif</Text>
+            <Text style={styles.countText}>{t("subscriptions.activeCount", { count: activeCount })}</Text>
           )}
         </View>
         <ScrollView
@@ -163,11 +174,15 @@ export default function Subscriptions() {
           ListEmptyComponent={
             <EmptyState
               icon="magnify"
-              title={cat !== "all" || status !== "all" ? "Gak ada yang cocok" : "Belum ada langganan"}
+              title={
+                cat !== "all" || status !== "all"
+                  ? t("subscriptions.noMatchTitle")
+                  : t("subscriptions.emptyTitle")
+              }
               subtitle={
                 cat !== "all" || status !== "all"
-                  ? "Coba ubah filter kategori atau status."
-                  : "Tap tombol + untuk menambah langganan pertamamu."
+                  ? t("subscriptions.noMatchSubtitle")
+                  : t("subscriptions.emptySubtitle")
               }
             />
           }

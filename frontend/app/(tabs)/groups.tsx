@@ -18,6 +18,7 @@ import { api, ApiError } from "@/src/lib/api";
 import { useAuth } from "@/src/context/AuthContext";
 import { useUpgrade } from "@/src/context/UpgradeContext";
 import { useToast } from "@/src/context/ToastContext";
+import { useLanguage } from "@/src/context/LanguageContext";
 import { EmptyState, Button, Input } from "@/src/components/ui";
 import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
 
@@ -39,6 +40,7 @@ export default function Groups() {
   const { user } = useAuth();
   const { showUpgrade } = useUpgrade();
   const toast = useToast();
+  const { t } = useLanguage();
 
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,14 +76,14 @@ export default function Groups() {
 
   const submitCreate = async () => {
     if (!nameInput.trim()) {
-      toast.show("Nama grup wajib diisi", "error");
+      toast.show(t("groups.errNameRequired"), "error");
       return;
     }
     setSubmitting(true);
     try {
       const res: any = await api.createGroup(nameInput.trim());
       setModal(null);
-      toast.show("Grup dibuat 🎉", "success");
+      toast.show(t("groups.createdToast"), "success");
       await load();
       router.push({ pathname: "/group/[id]", params: { id: res.group.id } });
     } catch (e) {
@@ -89,7 +91,7 @@ export default function Groups() {
         setModal(null);
         setTimeout(showUpgrade, 300);
       } else {
-        toast.show("Gagal membuat grup", "error");
+        toast.show(t("groups.errCreate"), "error");
       }
     } finally {
       setSubmitting(false);
@@ -98,23 +100,23 @@ export default function Groups() {
 
   const submitJoin = async () => {
     if (!codeInput.trim()) {
-      toast.show("Masukkan kode grup", "error");
+      toast.show(t("groups.errCodeRequired"), "error");
       return;
     }
     setSubmitting(true);
     try {
       const res: any = await api.joinGroup(codeInput.trim());
       setModal(null);
-      toast.show(`Berhasil gabung "${res.name}" 🎉`, "success");
+      toast.show(t("groups.joinedToast", { name: res.name }), "success");
       setCodeInput("");
       load();
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
-        toast.show("Kode grup tidak ditemukan", "error");
+        toast.show(t("groups.errCodeNotFound"), "error");
       } else if (e instanceof ApiError && e.status === 409) {
-        toast.show("Kamu sudah jadi anggota grup ini", "info");
+        toast.show(t("groups.errAlreadyMember"), "info");
       } else {
-        toast.show("Gagal gabung grup", "error");
+        toast.show(t("groups.errJoin"), "error");
       }
     } finally {
       setSubmitting(false);
@@ -124,13 +126,13 @@ export default function Groups() {
   return (
     <View style={styles.root}>
       <View style={{ paddingTop: insets.top + spacing.xl }}>
-        <Text style={styles.title}>Grup</Text>
+        <Text style={styles.title}>{t("groups.title")}</Text>
         <View style={styles.actionRow}>
           <Pressable testID="create-group-button" style={styles.actionBtn} onPress={onCreate}>
             <View style={styles.actionIcon}>
               <MaterialCommunityIcons name="plus-circle" size={22} color={colors.brand} />
             </View>
-            <Text style={styles.actionText}>Buat Grup</Text>
+            <Text style={styles.actionText}>{t("groups.createButton")}</Text>
             {user?.plan !== "premium" && (
               <View style={styles.lockPill}>
                 <MaterialCommunityIcons name="crown" size={10} color="#B45309" />
@@ -148,7 +150,7 @@ export default function Groups() {
             <View style={styles.actionIcon}>
               <MaterialCommunityIcons name="ticket-confirmation" size={22} color={colors.brand} />
             </View>
-            <Text style={styles.actionText}>Gabung Kode</Text>
+            <Text style={styles.actionText}>{t("groups.joinButton")}</Text>
           </Pressable>
         </View>
       </View>
@@ -184,15 +186,15 @@ export default function Groups() {
                   </Text>
                   {item.is_owner && (
                     <View style={styles.ownerPill}>
-                      <Text style={styles.ownerPillText}>Koordinator</Text>
+                      <Text style={styles.ownerPillText}>{t("groups.coordinator")}</Text>
                     </View>
                   )}
                 </View>
                 <Text style={styles.groupMeta}>
-                  {item.member_count} anggota · {item.sub_count} langganan
+                  {t("groups.meta", { members: item.member_count, subs: item.sub_count })}
                 </Text>
                 <Text style={styles.groupShare}>
-                  Bagianmu {formatRupiah(item.my_share)}
+                  {t("groups.share", { amount: formatRupiah(item.my_share) })}
                 </Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={22} color={colors.borderStrong} />
@@ -201,8 +203,8 @@ export default function Groups() {
           ListEmptyComponent={
             <EmptyState
               icon="account-group"
-              title="Belum ada grup"
-              subtitle="Patungan langganan bareng keluarga atau teman? Buat grup (Premium) atau gabung pakai kode undangan."
+              title={t("groups.emptyTitle")}
+              subtitle={t("groups.emptySubtitle")}
             />
           }
         />
@@ -218,18 +220,16 @@ export default function Groups() {
         <Pressable style={styles.backdrop} onPress={() => setModal(null)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>
-              {modal === "create" ? "Buat Grup Baru" : "Gabung Grup"}
+              {modal === "create" ? t("groups.modalCreateTitle") : t("groups.modalJoinTitle")}
             </Text>
             <Text style={styles.modalSub}>
-              {modal === "create"
-                ? "Kasih nama grupmu, misal: Keluarga Cemara"
-                : "Masukkan kode undangan 6 karakter dari koordinator"}
+              {modal === "create" ? t("groups.modalCreateSub") : t("groups.modalJoinSub")}
             </Text>
             {modal === "create" ? (
               <Input
                 testID="group-name-input"
                 icon="account-group"
-                placeholder="Nama grup"
+                placeholder={t("groups.namePlaceholder")}
                 value={nameInput}
                 onChangeText={setNameInput}
                 autoFocus
@@ -238,21 +238,21 @@ export default function Groups() {
               <Input
                 testID="group-code-input"
                 icon="ticket-confirmation"
-                placeholder="mis. AB3K9X"
+                placeholder={t("groups.codePlaceholder")}
                 value={codeInput}
-                onChangeText={(t) => setCodeInput(t.toUpperCase())}
+                onChangeText={(val) => setCodeInput(val.toUpperCase())}
                 autoCapitalize="characters"
                 autoFocus
               />
             )}
             <Button
               testID="modal-submit-button"
-              title={modal === "create" ? "Buat Grup" : "Gabung"}
+              title={modal === "create" ? t("groups.submitCreate") : t("groups.submitJoin")}
               onPress={modal === "create" ? submitCreate : submitJoin}
               loading={submitting}
             />
             <Pressable style={styles.cancelBtn} onPress={() => setModal(null)}>
-              <Text style={styles.cancelText}>Batal</Text>
+              <Text style={styles.cancelText}>{t("common.cancel")}</Text>
             </Pressable>
           </Pressable>
         </Pressable>

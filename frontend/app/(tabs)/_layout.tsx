@@ -6,6 +6,7 @@ import { StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { colors, font } from "@/src/theme";
+import { useLanguage } from "@/src/context/LanguageContext";
 
 function TabIcon({ name, color, focused }: { name: string; color: string; focused: boolean }) {
   return (
@@ -14,6 +15,7 @@ function TabIcon({ name, color, focused }: { name: string; color: string; focuse
 }
 
 export default function TabsLayout() {
+  const { t } = useLanguage();
   return (
     <Tabs
       screenOptions={{
@@ -44,7 +46,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Beranda",
+          title: t("tabs.home"),
           tabBarIcon: ({ color, focused }) => (
             <TabIcon name={focused ? "home" : "home-outline"} color={color} focused={focused} />
           ),
@@ -53,7 +55,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="subscriptions"
         options={{
-          title: "Langganan",
+          title: t("tabs.subscriptions"),
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
               name={focused ? "credit-card-multiple" : "credit-card-multiple-outline"}
@@ -66,7 +68,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="groups"
         options={{
-          title: "Grup",
+          title: t("tabs.groups"),
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
               name={focused ? "account-group" : "account-group-outline"}
@@ -79,7 +81,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="account"
         options={{
-          title: "Akun",
+          title: t("tabs.account"),
           tabBarIcon: ({ color, focused }) => (
             <TabIcon name={focused ? "account" : "account-outline"} color={color} focused={focused} />
           ),

@@ -22,12 +22,8 @@ import { CATEGORIES, BILLING_CYCLES } from "@/src/constants/categories";
 import { PRESETS } from "@/src/constants/presets";
 import { api } from "@/src/lib/api";
 import { useToast } from "@/src/context/ToastContext";
+import { useLanguage } from "@/src/context/LanguageContext";
 import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
-
-const SPLIT_TYPES = [
-  { key: "equal", label: "Bagi rata" },
-  { key: "custom", label: "Custom" },
-];
 
 function toISO(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -42,9 +38,15 @@ export default function GroupSubForm() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
+  const { t, locale } = useLanguage();
   const params = useLocalSearchParams<{ groupId: string; subId?: string }>();
   const gid = params.groupId as string;
   const editing = !!params.subId;
+
+  const SPLIT_TYPES = [
+    { key: "equal", label: t("groupDetail.splitEqual") },
+    { key: "custom", label: t("groupDetail.splitCustom") },
+  ];
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -87,7 +89,7 @@ export default function GroupSubForm() {
           }
         }
       } catch {
-        toast.show("Gagal memuat data grup", "error");
+        toast.show(t("groupSubForm.errLoadGroup"), "error");
         router.back();
       } finally {
         setLoading(false);
@@ -112,7 +114,7 @@ export default function GroupSubForm() {
 
   const save = async () => {
     if (!name.trim()) {
-      toast.show("Nama layanan wajib diisi", "error");
+      toast.show(t("groupSubForm.errNameRequired"), "error");
       return;
     }
     const body: any = {
@@ -138,10 +140,10 @@ export default function GroupSubForm() {
       } else {
         await api.createGroupSub(gid, body);
       }
-      toast.show(editing ? "Langganan grup diperbarui" : "Langganan grup ditambahkan 🎉", "success");
+      toast.show(editing ? t("groupSubForm.updated") : t("groupSubForm.created"), "success");
       router.back();
     } catch {
-      toast.show("Gagal menyimpan, coba lagi", "error");
+      toast.show(t("groupSubForm.errSave"), "error");
     } finally {
       setSaving(false);
     }
@@ -155,17 +157,17 @@ export default function GroupSubForm() {
     }
     try {
       await api.deleteGroupSub(gid, params.subId as string);
-      toast.show("Langganan grup dihapus", "info");
+      toast.show(t("groupSubForm.deleted"), "info");
       router.back();
     } catch {
-      toast.show("Gagal menghapus", "error");
+      toast.show(t("groupSubForm.errDelete"), "error");
     }
   };
 
   const dueDisplay = (() => {
     const d = new Date(dueDate + "T00:00:00");
     if (isNaN(d.getTime())) return dueDate;
-    return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    return d.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   })();
 
   if (loading) {
@@ -183,7 +185,7 @@ export default function GroupSubForm() {
           <MaterialCommunityIcons name="close" size={24} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.headerTitle}>
-          {editing ? "Edit Langganan Grup" : "Langganan Bersama"}
+          {editing ? t("groupSubForm.editTitle") : t("groupSubForm.createTitle")}
         </Text>
         <View style={styles.headerBtn} />
       </View>
@@ -196,7 +198,7 @@ export default function GroupSubForm() {
       >
         {!editing && (
           <>
-            <Text style={styles.label}>Pilihan cepat</Text>
+            <Text style={styles.label}>{t("groupSubForm.quickPick")}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -223,14 +225,14 @@ export default function GroupSubForm() {
 
         <Input
           testID="group-sub-name-input"
-          label="Nama layanan"
+          label={t("groupSubForm.nameLabel")}
           icon="tag"
-          placeholder="Netflix, Spotify, dll"
+          placeholder={t("groupSubForm.namePlaceholder")}
           value={name}
           onChangeText={setName}
         />
 
-        <Text style={styles.label}>Kategori</Text>
+        <Text style={styles.label}>{t("groupSubForm.categoryLabel")}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
           {CATEGORIES.map((c) => {
             const active = category === c.key;
@@ -242,7 +244,9 @@ export default function GroupSubForm() {
                 style={[styles.catChip, active && { backgroundColor: c.color + "1A", borderColor: c.color }]}
               >
                 <MaterialCommunityIcons name={c.icon as any} size={18} color={active ? c.color : colors.muted} />
-                <Text style={[styles.catChipText, active && { color: c.color }]}>{c.label}</Text>
+                <Text style={[styles.catChipText, active && { color: c.color }]}>
+                  {t(`categories.${c.key}`)}
+                </Text>
               </Pressable>
             );
           })}
@@ -251,7 +255,7 @@ export default function GroupSubForm() {
         <View style={{ marginTop: spacing.lg }}>
           <Input
             testID="group-sub-price-input"
-            label="Harga total (Rp)"
+            label={t("groupSubForm.priceLabel")}
             icon="cash"
             placeholder="0"
             value={price}
@@ -260,7 +264,7 @@ export default function GroupSubForm() {
           />
         </View>
 
-        <Text style={styles.label}>Siklus tagihan</Text>
+        <Text style={styles.label}>{t("groupSubForm.cycleLabel")}</Text>
         <View style={styles.segment}>
           {BILLING_CYCLES.map((c) => {
             const active = cycle === c.key;
@@ -271,13 +275,15 @@ export default function GroupSubForm() {
                 onPress={() => setCycle(c.key)}
                 style={[styles.segmentItem, active && styles.segmentActive]}
               >
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{c.label}</Text>
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                  {t(`cycles.${c.key}`)}
+                </Text>
               </Pressable>
             );
           })}
         </View>
 
-        <Text style={styles.label}>Jatuh tempo berikutnya</Text>
+        <Text style={styles.label}>{t("groupSubForm.dueDateLabel")}</Text>
         {Platform.OS === "web" ? (
           <View style={styles.dateBox}>
             <MaterialCommunityIcons name="calendar" size={20} color={colors.brand} />
@@ -310,7 +316,7 @@ export default function GroupSubForm() {
         )}
 
         {/* Split */}
-        <Text style={styles.label}>Pembagian biaya</Text>
+        <Text style={styles.label}>{t("groupSubForm.splitLabel")}</Text>
         <View style={styles.segment}>
           {SPLIT_TYPES.map((s) => {
             const active = splitType === s.key;
@@ -331,7 +337,7 @@ export default function GroupSubForm() {
           <View style={styles.equalCard}>
             <MaterialCommunityIcons name="account-multiple" size={20} color={colors.brand} />
             <Text style={styles.equalText}>
-              {members.length} anggota × {formatRupiah(equalShare)} per orang
+              {t("groupSubForm.equalShare", { count: members.length, amount: formatRupiah(equalShare) })}
             </Text>
           </View>
         ) : (
@@ -356,7 +362,7 @@ export default function GroupSubForm() {
               </View>
             ))}
             <View style={styles.customTotalRow}>
-              <Text style={styles.customTotalLabel}>Total pembagian</Text>
+              <Text style={styles.customTotalLabel}>{t("groupSubForm.totalSplit")}</Text>
               <Text
                 style={[
                   styles.customTotalValue,
@@ -373,7 +379,7 @@ export default function GroupSubForm() {
           <Pressable testID="delete-group-sub-button" style={styles.deleteBtn} onPress={doDelete}>
             <MaterialCommunityIcons name="trash-can-outline" size={20} color={colors.error} />
             <Text style={styles.deleteText}>
-              {confirmDelete ? "Tap lagi untuk konfirmasi hapus" : "Hapus langganan grup"}
+              {confirmDelete ? t("groupSubForm.confirmDelete") : t("groupSubForm.deleteButton")}
             </Text>
           </Pressable>
         )}
@@ -383,7 +389,7 @@ export default function GroupSubForm() {
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
           <Button
             testID="save-group-sub-button"
-            title={editing ? "Simpan Perubahan" : "Simpan Langganan Grup"}
+            title={editing ? t("groupSubForm.saveChanges") : t("groupSubForm.saveNew")}
             onPress={save}
             loading={saving}
           />

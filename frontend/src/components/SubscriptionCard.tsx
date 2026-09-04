@@ -1,8 +1,9 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { getCategory, cycleLabel } from "@/src/constants/categories";
+import { getCategory } from "@/src/constants/categories";
 import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
+import { useLanguage } from "@/src/context/LanguageContext";
 
 export interface Subscription {
   id: string;
@@ -44,17 +45,21 @@ export function CategoryLogo({
   );
 }
 
-function dueLabel(dateStr: string): { text: string; urgent: boolean } {
+function dueLabel(
+  dateStr: string,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  locale: string,
+): { text: string; urgent: boolean } {
   const due = new Date(dateStr + "T00:00:00");
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const days = Math.round((due.getTime() - today.getTime()) / 86400000);
   if (isNaN(days)) return { text: dateStr, urgent: false };
-  if (days < 0) return { text: `Lewat ${Math.abs(days)} hari`, urgent: true };
-  if (days === 0) return { text: "Jatuh tempo hari ini", urgent: true };
-  if (days === 1) return { text: "Besok", urgent: true };
-  if (days <= 7) return { text: `${days} hari lagi`, urgent: true };
-  const d = due.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+  if (days < 0) return { text: t("subscriptionCard.overdueDays", { days: Math.abs(days) }), urgent: true };
+  if (days === 0) return { text: t("subscriptionCard.dueToday"), urgent: true };
+  if (days === 1) return { text: t("subscriptionCard.dueTomorrow"), urgent: true };
+  if (days <= 7) return { text: t("subscriptionCard.dueInDays", { days }), urgent: true };
+  const d = due.toLocaleDateString(locale, { day: "numeric", month: "short" });
   return { text: d, urgent: false };
 }
 
@@ -65,8 +70,9 @@ export function SubscriptionCard({
   sub: Subscription;
   onPress: () => void;
 }) {
+  const { t, locale } = useLanguage();
   const cat = getCategory(sub.category);
-  const due = dueLabel(sub.next_due_date);
+  const due = dueLabel(sub.next_due_date, t, locale);
   const isTrial = sub.status === "trial";
 
   return (
@@ -83,7 +89,7 @@ export function SubscriptionCard({
         <View style={styles.metaRow}>
           <View style={[styles.dot, { backgroundColor: cat.color }]} />
           <Text style={styles.meta} numberOfLines={1}>
-            {cat.label} · {cycleLabel(sub.billing_cycle)}
+            {t(`categories.${cat.key}`)} · {t(`cycles.${sub.billing_cycle}`)}
           </Text>
         </View>
         <View style={styles.badgeRow}>
@@ -109,7 +115,7 @@ export function SubscriptionCard({
           </View>
           {isTrial && (
             <View style={styles.trialBadge}>
-              <Text style={styles.trialText}>Trial</Text>
+              <Text style={styles.trialText}>{t("subscriptionCard.trial")}</Text>
             </View>
           )}
         </View>
