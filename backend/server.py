@@ -1,9 +1,10 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import io
 import logging
 import uuid
 import secrets
@@ -13,6 +14,9 @@ import re
 import bcrypt
 import jwt
 import httpx
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr, BeforeValidator
 from typing import List, Optional, Annotated, Any
@@ -1492,6 +1496,33 @@ async def admin_login(body: AdminLoginBody):
     return {"token": create_admin_token()}
 
 
+async def enrich_users(docs: List[dict]) -> List[dict]:
+    """Shape raw user docs into the admin-facing view, with each user's
+    active subscription count attached. Shared by the on-screen list and
+    the Excel export so both always show identical data."""
+    sub_counts = await asyncio.gather(
+        *[
+            db.subscriptions.count_documents({"user_id": d["user_id"], "deleted_at": None})
+            for d in docs
+        ]
+    )
+    return [
+        {
+            "user_id": d["user_id"],
+            "email": d.get("email"),
+            "name": d.get("name"),
+            "plan": d.get("plan", "free"),
+            "phone": d.get("phone"),
+            "created_at": d.get("created_at"),
+            "premium_since": d.get("premium_since"),
+            "premium_expires_at": d.get("premium_expires_at"),
+            "last_active_at": d.get("last_active_at"),
+            "subscription_count": count,
+        }
+        for d, count in zip(docs, sub_counts)
+    ]
+
+
 @api_router.get("/admin/users")
 async def admin_list_users(query: str = "", _: None = Depends(require_admin)):
     q = query.strip()
@@ -1503,29 +1534,7 @@ async def admin_list_users(query: str = "", _: None = Depends(require_admin)):
             {"name": {"$regex": safe_q, "$options": "i"}},
         ]}
     docs = await db.users.find(filt, {"_id": 0}).sort("created_at", -1).to_list(50)
-    sub_counts = await asyncio.gather(
-        *[
-            db.subscriptions.count_documents({"user_id": d["user_id"], "deleted_at": None})
-            for d in docs
-        ]
-    )
-    return {
-        "users": [
-            {
-                "user_id": d["user_id"],
-                "email": d.get("email"),
-                "name": d.get("name"),
-                "plan": d.get("plan", "free"),
-                "phone": d.get("phone"),
-                "created_at": d.get("created_at"),
-                "premium_since": d.get("premium_since"),
-                "premium_expires_at": d.get("premium_expires_at"),
-                "last_active_at": d.get("last_active_at"),
-                "subscription_count": count,
-            }
-            for d, count in zip(docs, sub_counts)
-        ]
-    }
+    return {"users": await enrich_users(docs)}
 
 
 class AdminSetPlanBody(BaseModel):
@@ -1550,6 +1559,94 @@ async def admin_set_plan(body: AdminSetPlanBody, _: None = Depends(require_admin
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
     logger.info(f"Admin set plan: user={body.user_id} -> {body.plan}")
     return {"status": "ok"}
+
+
+def _excel_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse a stored ISO timestamp into a naive datetime for Excel — Excel
+    doesn't understand timezone-aware datetimes, so drop the tzinfo (values
+    are stored in UTC throughout this app)."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+        return dt.replace(tzinfo=None) if dt.tzinfo else dt
+    except Exception:
+        return None
+
+
+def build_users_xlsx(users: List[dict]) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Akun Notifin"
+
+    headers = [
+        "Nama", "Email", "No. WhatsApp", "Status", "Tanggal Daftar",
+        "Premium Sejak", "Premium Sampai", "Jumlah Langganan", "Terakhir Aktif",
+    ]
+    ws.append(headers)
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="059669", end_color="059669", fill_type="solid")
+    for col in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    date_cols = {5, 6, 7}   # Tanggal Daftar, Premium Sejak, Premium Sampai
+    datetime_cols = {9}     # Terakhir Aktif
+
+    for u in users:
+        row = [
+            u.get("name") or "-",
+            u.get("email") or "-",
+            ("+" + u["phone"]) if u.get("phone") else "-",
+            "Premium" if u.get("plan") == "premium" else "Free",
+            _excel_dt(u.get("created_at")),
+            _excel_dt(u.get("premium_since")),
+            _excel_dt(u.get("premium_expires_at")),
+            u.get("subscription_count", 0),
+            _excel_dt(u.get("last_active_at")),
+        ]
+        ws.append(row)
+        r = ws.max_row
+        for col in date_cols:
+            ws.cell(row=r, column=col).number_format = "dd mmm yyyy"
+        for col in datetime_cols:
+            ws.cell(row=r, column=col).number_format = "dd mmm yyyy hh:mm"
+
+    for col in range(1, len(headers) + 1):
+        max_len = len(headers[col - 1])
+        for r in range(2, ws.max_row + 1):
+            val = ws.cell(row=r, column=col).value
+            max_len = max(max_len, len(str(val)) if val is not None else 0)
+        ws.column_dimensions[get_column_letter(col)].width = min(max_len + 4, 42)
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{ws.max_row}"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+class AdminExportBody(BaseModel):
+    user_ids: Optional[List[str]] = None  # None/empty = export every account
+
+
+@api_router.post("/admin/export")
+async def admin_export_users(body: AdminExportBody, _: None = Depends(require_admin)):
+    if body.user_ids:
+        docs = await db.users.find({"user_id": {"$in": body.user_ids}}, {"_id": 0}).to_list(len(body.user_ids))
+    else:
+        docs = await db.users.find({}, {"_id": 0}).sort("created_at", -1).to_list(10000)
+    users = await enrich_users(docs)
+    xlsx_bytes = build_users_xlsx(users)
+    filename = f"notifin-akun-{date.today().isoformat()}.xlsx"
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 ADMIN_PAGE_HTML = """<!doctype html>
@@ -1622,6 +1719,22 @@ ADMIN_PAGE_HTML = """<!doctype html>
   .top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
   .logout { background: none; color: #6B7280; font-weight: 600; padding: 4px; }
   .empty { color: #6B7280; font-size: 14px; padding: 20px 0; text-align: center; }
+  .toolbar {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    gap: 10px; margin: 4px 0 8px;
+  }
+  .select-all {
+    display: flex; align-items: center; gap: 6px; font-size: 13px; color: #374151;
+    font-weight: 600; cursor: pointer;
+  }
+  .select-all input { width: auto; margin: 0; }
+  .toolbar-actions { display: flex; gap: 8px; }
+  .btn-export {
+    background: #E8F0EC; color: #182924; font-size: 13px; padding: 9px 14px;
+  }
+  .btn-export:disabled { opacity: 0.5; cursor: default; }
+  .btn-export-all { background: #059669; color: #fff; }
+  .row-checkbox { width: auto; margin: 0; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -1642,12 +1755,26 @@ ADMIN_PAGE_HTML = """<!doctype html>
   <p class="sub">Cari akun berdasarkan email atau nama, lalu ubah status Premium-nya.</p>
   <input id="search" type="text" placeholder="Cari email atau nama..." oninput="onSearchInput()" />
   <div class="error" id="app-error"></div>
+  <div class="toolbar">
+    <label class="select-all">
+      <input type="checkbox" id="select-all-checkbox" onchange="onSelectAll(this.checked)" />
+      Pilih semua
+    </label>
+    <div class="toolbar-actions">
+      <button class="btn-export" id="export-selected-btn" onclick="exportSelected()" disabled>
+        Export Terpilih (0)
+      </button>
+      <button class="btn-export btn-export-all" onclick="exportAll()">Export Semua (.xlsx)</button>
+    </div>
+  </div>
   <div id="list"></div>
 </div>
 
 <script>
   let token = null;
   let searchTimer = null;
+  let selected = new Set();
+  let currentUsers = [];
 
   async function login() {
     const password = document.getElementById('password').value;
@@ -1740,10 +1867,72 @@ ADMIN_PAGE_HTML = """<!doctype html>
     return '<div class="chip ' + (cls || '') + '"><span class="chip-label">' + label + '</span>' + escapeHtml(String(value)) + '</div>';
   }
 
+  function toggleSelect(uid, checked) {
+    if (checked) selected.add(uid); else selected.delete(uid);
+    updateExportUi();
+  }
+
+  function onSelectAll(checked) {
+    currentUsers.forEach((u) => {
+      if (checked) selected.add(u.user_id); else selected.delete(u.user_id);
+    });
+    renderList(currentUsers);
+  }
+
+  function updateExportUi() {
+    const btn = document.getElementById('export-selected-btn');
+    btn.textContent = 'Export Terpilih (' + selected.size + ')';
+    btn.disabled = selected.size === 0;
+    const selectAllCb = document.getElementById('select-all-checkbox');
+    if (selectAllCb) {
+      selectAllCb.checked = currentUsers.length > 0 && currentUsers.every((u) => selected.has(u.user_id));
+    }
+  }
+
+  async function downloadXlsx(userIds) {
+    const errEl = document.getElementById('app-error');
+    errEl.textContent = '';
+    try {
+      const res = await fetch('/api/admin/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ user_ids: userIds }),
+      });
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        const data = await res.json().catch(() => ({}));
+        errEl.textContent = data.detail || 'Gagal export data';
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'notifin-akun-' + new Date().toISOString().slice(0, 10) + '.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      errEl.textContent = 'Tidak bisa menghubungi server.';
+    }
+  }
+
+  function exportAll() {
+    downloadXlsx(null);
+  }
+
+  function exportSelected() {
+    if (selected.size === 0) return;
+    downloadXlsx(Array.from(selected));
+  }
+
   function renderList(users) {
+    currentUsers = users;
     const list = document.getElementById('list');
     if (!users.length) {
       list.innerHTML = '<div class="empty">Tidak ada akun ditemukan.</div>';
+      updateExportUi();
       return;
     }
     list.innerHTML = users.map((u) => {
@@ -1757,10 +1946,12 @@ ADMIN_PAGE_HTML = """<!doctype html>
       meta += chip('WA', u.phone ? '+' + u.phone : '-');
       meta += chip('Langganan', u.subscription_count);
       meta += chip('Aktif', lastActiveText(u.last_active_at));
+      const checked = selected.has(u.user_id) ? 'checked' : '';
 
       return (
         '<div class="row">' +
           '<div class="row-top">' +
+            '<input type="checkbox" class="row-checkbox" data-uid="' + u.user_id + '" ' + checked + ' onchange="toggleSelect(this.getAttribute(&quot;data-uid&quot;), this.checked)" />' +
             '<div class="info">' +
               '<div class="name">' + escapeHtml(u.name || '(tanpa nama)') + '</div>' +
               '<div class="email">' + escapeHtml(u.email || '') + '</div>' +
@@ -1776,6 +1967,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
         '</div>'
       );
     }).join('');
+    updateExportUi();
   }
 
   async function togglePlan(btn) {
