@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
+from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -1397,6 +1398,296 @@ async def send_push(recipients: List[str], data: dict, idempotency_key: Optional
 @api_router.get("/")
 async def root():
     return {"message": "Notifin API", "status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Admin — password-gated internal tool (not part of the public app) for
+# manually flipping any account's plan. Useful for granting premium to a
+# tester, or fixing a case where a real payment came through but Mayar's
+# webhook was missed. Served at GET /admin as a plain HTML page with its
+# own login; the API endpoints below sit under /api like everything else.
+# ---------------------------------------------------------------------------
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+
+
+def create_admin_token() -> str:
+    payload = {"admin": True, "exp": datetime.now(timezone.utc) + timedelta(hours=12)}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+async def require_admin(authorization: Optional[str] = Header(None)) -> None:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing admin token")
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Sesi admin sudah habis, login lagi")
+    if not payload.get("admin"):
+        raise HTTPException(status_code=401, detail="Token bukan token admin")
+
+
+class AdminLoginBody(BaseModel):
+    password: str
+
+
+@api_router.post("/admin/login")
+async def admin_login(body: AdminLoginBody):
+    if not ADMIN_PASSWORD.strip():
+        raise HTTPException(
+            status_code=503,
+            detail="Password admin belum diatur di server (env var ADMIN_PASSWORD kosong)",
+        )
+    if not secrets.compare_digest(body.password, ADMIN_PASSWORD):
+        raise HTTPException(status_code=401, detail="Password salah")
+    return {"token": create_admin_token()}
+
+
+@api_router.get("/admin/users")
+async def admin_list_users(query: str = "", _: None = Depends(require_admin)):
+    q = query.strip()
+    filt: dict = {}
+    if q:
+        safe_q = re.escape(q)
+        filt = {"$or": [
+            {"email": {"$regex": safe_q, "$options": "i"}},
+            {"name": {"$regex": safe_q, "$options": "i"}},
+        ]}
+    docs = await db.users.find(filt, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return {
+        "users": [
+            {
+                "user_id": d["user_id"],
+                "email": d.get("email"),
+                "name": d.get("name"),
+                "plan": d.get("plan", "free"),
+                "phone": d.get("phone"),
+            }
+            for d in docs
+        ]
+    }
+
+
+class AdminSetPlanBody(BaseModel):
+    user_id: str
+    plan: str  # "free" | "premium"
+
+
+@api_router.post("/admin/set-plan")
+async def admin_set_plan(body: AdminSetPlanBody, _: None = Depends(require_admin)):
+    if body.plan not in ("free", "premium"):
+        raise HTTPException(status_code=422, detail='plan harus "free" atau "premium"')
+    res = await db.users.update_one({"user_id": body.user_id}, {"$set": {"plan": body.plan}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    logger.info(f"Admin set plan: user={body.user_id} -> {body.plan}")
+    return {"status": "ok"}
+
+
+ADMIN_PAGE_HTML = """<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Notifin Admin</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #F7FAF8; color: #182924;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 480px; background: #FFFFFF; border-radius: 20px;
+    padding: 28px; box-shadow: 0 16px 32px -20px rgba(11,61,46,0.28);
+  }
+  .wide { max-width: 640px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: #6B7280; font-size: 14px; margin: 0 0 20px; }
+  input {
+    width: 100%; padding: 12px 14px; border-radius: 12px; border: 1.5px solid #D1D5DB;
+    font-size: 15px; margin-bottom: 12px; outline: none;
+  }
+  input:focus { border-color: #059669; }
+  button {
+    cursor: pointer; border: none; border-radius: 999px; font-weight: 700; font-size: 14px;
+    padding: 12px 18px;
+  }
+  .btn-primary { width: 100%; background: #059669; color: #fff; padding: 14px; font-size: 15px; }
+  .btn-primary:disabled { opacity: 0.6; cursor: default; }
+  .error { color: #EF4444; font-size: 13px; margin: -6px 0 12px; min-height: 16px; }
+  .row {
+    display: flex; align-items: center; gap: 12px; padding: 12px 0;
+    border-bottom: 1px solid #F3F4F6;
+  }
+  .row:last-child { border-bottom: none; }
+  .row .info { flex: 1; min-width: 0; }
+  .row .name { font-weight: 700; font-size: 14px; }
+  .row .email { color: #6B7280; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill {
+    font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .pill-premium { background: #D1FAE5; color: #065F46; }
+  .pill-free { background: #E8F0EC; color: #233B33; }
+  .btn-toggle { background: #E8F0EC; color: #182924; white-space: nowrap; }
+  .btn-toggle:disabled { opacity: 0.5; cursor: default; }
+  #app { display: none; }
+  .top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .logout { background: none; color: #6B7280; font-weight: 600; padding: 4px; }
+  .empty { color: #6B7280; font-size: 14px; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="card" id="login-card">
+  <h1>Notifin Admin</h1>
+  <p class="sub">Masuk untuk atur status Premium akun secara manual.</p>
+  <input id="password" type="password" placeholder="Password admin" onkeydown="if(event.key==='Enter')login()" />
+  <div class="error" id="login-error"></div>
+  <button class="btn-primary" id="login-btn" onclick="login()">Masuk</button>
+</div>
+
+<div class="card wide" id="app">
+  <div class="top-row">
+    <h1>Notifin Admin</h1>
+    <button class="logout" onclick="logout()">Keluar</button>
+  </div>
+  <p class="sub">Cari akun berdasarkan email atau nama, lalu ubah status Premium-nya.</p>
+  <input id="search" type="text" placeholder="Cari email atau nama..." oninput="onSearchInput()" />
+  <div class="error" id="app-error"></div>
+  <div id="list"></div>
+</div>
+
+<script>
+  let token = null;
+  let searchTimer = null;
+
+  async function login() {
+    const password = document.getElementById('password').value;
+    const errEl = document.getElementById('login-error');
+    const btn = document.getElementById('login-btn');
+    errEl.textContent = '';
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.detail || 'Gagal masuk'; return; }
+      token = data.token;
+      document.getElementById('login-card').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      loadUsers('');
+    } catch (e) {
+      errEl.textContent = 'Tidak bisa menghubungi server.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function logout() {
+    token = null;
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('login-card').style.display = 'block';
+    document.getElementById('password').value = '';
+  }
+
+  function onSearchInput() {
+    clearTimeout(searchTimer);
+    const q = document.getElementById('search').value;
+    searchTimer = setTimeout(() => loadUsers(q), 300);
+  }
+
+  async function loadUsers(query) {
+    const errEl = document.getElementById('app-error');
+    errEl.textContent = '';
+    try {
+      const res = await fetch('/api/admin/users?query=' + encodeURIComponent(query), {
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        errEl.textContent = data.detail || 'Gagal memuat daftar akun';
+        return;
+      }
+      renderList(data.users);
+    } catch (e) {
+      errEl.textContent = 'Tidak bisa menghubungi server.';
+    }
+  }
+
+  function renderList(users) {
+    const list = document.getElementById('list');
+    if (!users.length) {
+      list.innerHTML = '<div class="empty">Tidak ada akun ditemukan.</div>';
+      return;
+    }
+    list.innerHTML = users.map((u) => {
+      const isPremium = u.plan === 'premium';
+      return (
+        '<div class="row">' +
+          '<div class="info">' +
+            '<div class="name">' + escapeHtml(u.name || '(tanpa nama)') + '</div>' +
+            '<div class="email">' + escapeHtml(u.email || '') + '</div>' +
+          '</div>' +
+          '<span class="pill ' + (isPremium ? 'pill-premium' : 'pill-free') + '">' +
+            (isPremium ? 'Premium' : 'Free') +
+          '</span>' +
+          '<button class="btn-toggle" data-uid="' + u.user_id + '" data-plan="' + (isPremium ? 'free' : 'premium') + '" onclick="togglePlan(this)">' +
+            (isPremium ? 'Jadikan Free' : 'Jadikan Premium') +
+          '</button>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  async function togglePlan(btn) {
+    const userId = btn.getAttribute('data-uid');
+    const plan = btn.getAttribute('data-plan');
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = 'Menyimpan...';
+    try {
+      const res = await fetch('/api/admin/set-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ user_id: userId, plan }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        document.getElementById('app-error').textContent = data.detail || 'Gagal menyimpan';
+        btn.disabled = false;
+        btn.textContent = original;
+        return;
+      }
+      loadUsers(document.getElementById('search').value);
+    } catch (e) {
+      document.getElementById('app-error').textContent = 'Tidak bisa menghubungi server.';
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+
+  function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+</script>
+</body>
+</html>
+"""
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    return HTMLResponse(ADMIN_PAGE_HTML)
 
 
 # ---------------------------------------------------------------------------
