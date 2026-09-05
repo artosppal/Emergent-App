@@ -994,6 +994,40 @@ async def nudge_member(gid: str, sid: str, body: NudgeBody,
     return {"status": "sent", "channels": channels, "wa_simulated": not wa_live()}
 
 
+# ---------------------------------------------------------------------------
+# TESTING ONLY — manually fire a WhatsApp reminder for one subscription.
+# Does not touch reminder_sweep()/scheduler_loop() or their day-offset
+# (H-3/H-1/H-0) and notif_log dedup rules at all — this bypasses all of
+# that on purpose so you can test sending without waiting for the
+# scheduler or hitting the "already sent today" guard. Safe to leave in:
+# while FONNTE_TOKEN is unset, send_whatsapp() stays in simulation mode
+# (logs + wa_outbox only, no real message goes out).
+# ---------------------------------------------------------------------------
+class TestReminderBody(BaseModel):
+    subscription_id: str
+
+
+@api_router.post("/test/send-reminder")
+async def test_send_reminder(body: TestReminderBody, user: dict = Depends(get_current_user)):
+    sub = await db.subscriptions.find_one(
+        {"id": body.subscription_id, "user_id": user["user_id"], "deleted_at": None}, {"_id": 0})
+    if not sub:
+        raise HTTPException(status_code=404, detail="Langganan tidak ditemukan")
+    if not user.get("phone"):
+        raise HTTPException(status_code=422, detail="Nomor WhatsApp belum diatur di akun ini")
+
+    msg = (f"[TEST] Halo {user.get('name') or 'kamu'}! 🔔 Langganan {sub['name']} kamu "
+           f"{fmt_rp(sub.get('price', 0))} jatuh tempo tanggal {sub.get('next_due_date')}. "
+           f"Jangan lupa bayar atau cancel ya — Notifin")
+    result = await send_whatsapp(user["phone"], msg)
+    return {
+        "status": "sent" if result.get("status") else "failed",
+        "simulated": result.get("simulated", not wa_live()),
+        "phone": user["phone"],
+        "message": msg,
+    }
+
+
 def cycle_back(d: date, cycle: str) -> date:
     if cycle == "weekly":
         return d - timedelta(days=7)
