@@ -44,7 +44,13 @@ def auth(token):
 def owner(s):
     """Premium owner user"""
     u = _register(s, "owner")
-    r = s.post(f"{API}/auth/upgrade", headers=auth(u["token"]))
+    # /auth/upgrade now starts a real Mayar checkout instead of flipping the
+    # plan directly, so tests simulate the webhook that actually grants
+    # premium (same one Mayar will call once payment succeeds).
+    r = s.post(f"{API}/test/simulate-mayar-webhook", headers=auth(u["token"]),
+               json={"event": "membership.newMemberRegistered"})
+    assert r.status_code == 200, r.text
+    r = s.get(f"{API}/auth/me", headers=auth(u["token"]))
     assert r.status_code == 200
     assert r.json()["user"]["plan"] == "premium"
     return u
@@ -285,7 +291,8 @@ class TestDashboardHighlights:
     def test_dashboard_highlights(self, s):
         # Fresh premium user (unlimited) with 2 subs: cheap yearly + expensive monthly + trial
         u = _register(s, "dashuser")
-        s.post(f"{API}/auth/upgrade", headers=auth(u["token"]))
+        s.post(f"{API}/test/simulate-mayar-webhook", headers=auth(u["token"]),
+               json={"event": "membership.newMemberRegistered"})
         today = date.today()
 
         # Cheap monthly

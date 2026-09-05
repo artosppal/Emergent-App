@@ -4,8 +4,9 @@ import React, {
   useContext,
   useMemo,
   useRef,
+  useState,
 } from "react";
-import { StyleSheet, Text, View, Pressable } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View, Pressable, Linking } from "react-native";
 import {
   BottomSheetModal,
   BottomSheetBackdrop,
@@ -16,8 +17,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
-import { useAuth } from "@/src/context/AuthContext";
-import { api } from "@/src/lib/api";
+import { api, ApiError } from "@/src/lib/api";
 import { useToast } from "@/src/context/ToastContext";
 import { useLanguage } from "@/src/context/LanguageContext";
 
@@ -28,9 +28,10 @@ const UpgradeContext = createContext<{ showUpgrade: () => void } | undefined>(
 export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const ref = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets();
-  const { setUser } = useAuth();
   const toast = useToast();
   const { t } = useLanguage();
+  const [tier, setTier] = useState<"monthly" | "yearly">("monthly");
+  const [upgrading, setUpgrading] = useState(false);
 
   const BENEFITS = [
     { icon: "infinity", text: t("upgrade.benefitUnlimited") },
@@ -45,15 +46,27 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const doUpgrade = useCallback(async () => {
+    setUpgrading(true);
     try {
-      const res: any = await api.upgrade();
-      setUser(res.user);
-      ref.current?.dismiss();
-      toast.show(t("upgrade.successToast"), "success");
-    } catch {
-      toast.show(t("upgrade.errToast"), "error");
+      const res: any = await api.upgrade(tier);
+      if (res.checkout_url) {
+        ref.current?.dismiss();
+        await Linking.openURL(res.checkout_url);
+      } else {
+        toast.show(t("upgrade.errToast"), "error");
+      }
+    } catch (e) {
+      // 503 = KYC/Mayar not configured yet — a friendlier message than the
+      // generic error, since it's an expected state until the API key is set.
+      if (e instanceof ApiError && e.status === 503) {
+        toast.show(e.message, "info");
+      } else {
+        toast.show(t("upgrade.errToast"), "error");
+      }
+    } finally {
+      setUpgrading(false);
     }
-  }, [setUser, toast, t]);
+  }, [tier, toast, t]);
 
   const renderBackdrop = useCallback(
     (props: any) => (
@@ -98,20 +111,47 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
             ))}
           </View>
 
-          <View style={styles.priceRow}>
-            <Text style={styles.price}>Rp19.000</Text>
-            <Text style={styles.priceUnit}>{t("upgrade.perMonth")}</Text>
-            <View style={styles.yearPill}>
-              <Text style={styles.yearPillText}>{t("upgrade.yearlyPill")}</Text>
-            </View>
+          <View style={styles.tierRow}>
+            <Pressable
+              testID="upgrade-tier-monthly"
+              onPress={() => setTier("monthly")}
+              style={[styles.tierCard, tier === "monthly" && styles.tierCardActive]}
+            >
+              <Text style={[styles.tierPrice, tier === "monthly" && styles.tierPriceActive]}>
+                Rp19.000
+              </Text>
+              <Text style={[styles.tierLabel, tier === "monthly" && styles.tierLabelActive]}>
+                {t("upgrade.perMonth")}
+              </Text>
+            </Pressable>
+            <Pressable
+              testID="upgrade-tier-yearly"
+              onPress={() => setTier("yearly")}
+              style={[styles.tierCard, tier === "yearly" && styles.tierCardActive]}
+            >
+              <View style={styles.savePill}>
+                <Text style={styles.savePillText}>{t("upgrade.yearlyPill")}</Text>
+              </View>
+              <Text style={[styles.tierPrice, tier === "yearly" && styles.tierPriceActive]}>
+                Rp149.000
+              </Text>
+              <Text style={[styles.tierLabel, tier === "yearly" && styles.tierLabelActive]}>
+                {t("upgrade.perYear")}
+              </Text>
+            </Pressable>
           </View>
 
           <Pressable
             testID="upgrade-confirm-button"
-            style={({ pressed }) => [styles.cta, pressed && { opacity: 0.9 }]}
+            style={({ pressed }) => [styles.cta, pressed && { opacity: 0.9 }, upgrading && { opacity: 0.7 }]}
             onPress={doUpgrade}
+            disabled={upgrading}
           >
-            <Text style={styles.ctaText}>{t("upgrade.cta")}</Text>
+            {upgrading ? (
+              <ActivityIndicator color={colors.onBrandPrimary} />
+            ) : (
+              <Text style={styles.ctaText}>{t("upgrade.cta")}</Text>
+            )}
           </Pressable>
           <Pressable
             testID="upgrade-dismiss-button"
@@ -180,28 +220,42 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     color: colors.onSurface,
   },
-  priceRow: {
+  tierRow: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignSelf: "stretch",
+    gap: spacing.md,
     marginTop: spacing.xl,
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: spacing.xs,
   },
-  price: {
+  tierCard: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  tierCardActive: {
+    borderColor: colors.brand,
+    backgroundColor: colors.brandTertiary,
+  },
+  tierPrice: {
     fontFamily: font.extrabold,
-    fontSize: fontSize["3xl"],
-    color: colors.brand,
+    fontSize: fontSize.xl,
+    color: colors.onSurface,
+    marginTop: spacing.xs,
   },
-  priceUnit: { fontFamily: font.medium, fontSize: fontSize.lg, color: colors.muted },
-  yearPill: {
-    marginLeft: spacing.sm,
+  tierPriceActive: { color: colors.brandDark },
+  tierLabel: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted, marginTop: 2 },
+  tierLabelActive: { color: colors.onBrandTertiary },
+  savePill: {
     backgroundColor: colors.brandSecondary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
     borderRadius: radius.pill,
   },
-  yearPillText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onBrandSecondary },
+  savePillText: { fontFamily: font.bold, fontSize: 10, color: colors.onBrandSecondary },
   cta: {
     alignSelf: "stretch",
     backgroundColor: colors.brand,

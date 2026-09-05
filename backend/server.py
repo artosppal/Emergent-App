@@ -46,6 +46,33 @@ FONNTE_BASE_URL = "https://api.fonnte.com"
 def wa_live() -> bool:
     return bool(FONNTE_TOKEN.strip())
 
+
+# Payment via Mayar.id (membership product "Notifin Premium").
+# All four stay empty until KYC is approved and you fill them in on Railway —
+# /auth/upgrade returns a clear "not configured yet" error until then, it
+# never falls back to the old dummy toggle.
+MAYAR_API_KEY = os.environ.get("MAYAR_API_KEY", "")
+MAYAR_PRODUCT_ID = os.environ.get("MAYAR_PRODUCT_ID", "")
+MAYAR_TIER_MONTHLY_ID = os.environ.get("MAYAR_TIER_MONTHLY_ID", "")
+MAYAR_TIER_YEARLY_ID = os.environ.get("MAYAR_TIER_YEARLY_ID", "")
+MAYAR_BASE_URL = "https://api.mayar.id"
+
+# Mayar does not sign/HMAC its webhook body (confirmed against their public
+# docs and a working third-party integration writeup — there is no header or
+# payload field to check). The documented workaround, and what real Mayar
+# integrations use, is a shared secret placed in the webhook URL itself:
+# register "https://<backend>/api/webhooks/mayar?secret=<this value>" as the
+# webhook URL in the Mayar dashboard, and this app rejects any call whose
+# ?secret= doesn't match. Generate any long random string for it.
+MAYAR_WEBHOOK_SECRET = os.environ.get("MAYAR_WEBHOOK_SECRET", "")
+
+
+def mayar_live() -> bool:
+    return bool(
+        MAYAR_API_KEY.strip() and MAYAR_PRODUCT_ID.strip()
+        and MAYAR_TIER_MONTHLY_ID.strip() and MAYAR_TIER_YEARLY_ID.strip()
+    )
+
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
@@ -269,12 +296,191 @@ async def logout(authorization: Optional[str] = Header(None)):
     return {"status": "ok"}
 
 
+class UpgradeBody(BaseModel):
+    tier: str  # "monthly" | "yearly"
+
+
 @api_router.post("/auth/upgrade")
-async def mock_upgrade(user: dict = Depends(get_current_user)):
-    # Fase 1: UI-only upgrade toggle (real payment arrives in Fase 4).
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"plan": "premium"}})
-    updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
-    return {"user": public_user(updated)}
+async def upgrade(body: UpgradeBody, user: dict = Depends(get_current_user)):
+    """Starts a real Mayar checkout — does NOT flip `plan` itself. `plan`
+    only becomes "premium" once /webhooks/mayar confirms the payment."""
+    if body.tier not in ("monthly", "yearly"):
+        raise HTTPException(status_code=422, detail='tier harus "monthly" atau "yearly"')
+    if not mayar_live():
+        raise HTTPException(
+            status_code=503,
+            detail="Pembayaran belum aktif — masih menunggu verifikasi KYC Mayar selesai.",
+        )
+    tier_id = MAYAR_TIER_MONTHLY_ID if body.tier == "monthly" else MAYAR_TIER_YEARLY_ID
+    checkout_link = await mayar_create_checkout(user, tier_id)
+    if not checkout_link:
+        raise HTTPException(
+            status_code=502,
+            detail="Mayar tidak mengembalikan link checkout. Cek log server untuk detail responsnya.",
+        )
+    return {"checkout_url": checkout_link}
+
+
+async def mayar_create_checkout(user: dict, tier_id: str) -> Optional[str]:
+    """Registers the user against a membership tier on Mayar, which — per
+    Mayar's docs — creates a pending member + associated payment link for
+    them to complete checkout. We only ever trust the webhook to actually
+    grant premium; this call's response is used purely to get a URL to send
+    the user to pay at.
+
+    NOTE: Mayar's public docs for non-credit membership products are thin
+    and, in places, inconsistent about the exact response shape here — this
+    checks every field name we found evidence for. If Mayar's real response
+    doesn't match any of them, this returns None and the raw response is
+    logged so it can be fixed from a real response body once KYC is done.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as c:
+            resp = await c.post(
+                f"{MAYAR_BASE_URL}/hl/v2/memberships/members/create",
+                headers={
+                    "Authorization": f"Bearer {MAYAR_API_KEY.strip()}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "productId": MAYAR_PRODUCT_ID.strip(),
+                    "membershipTierId": tier_id.strip(),
+                    "customerInfo": {
+                        "name": user.get("name") or user["email"],
+                        "email": user["email"],
+                        "mobile": user.get("phone") or "-",
+                    },
+                    "membershipMonthlyPeriod": 1,
+                },
+            )
+        result = resp.json()
+    except Exception as e:
+        logger.warning(f"Mayar checkout request failed: {e}")
+        return None
+
+    if resp.status_code >= 400:
+        logger.warning(f"Mayar checkout rejected ({resp.status_code}): {result}")
+        return None
+
+    data = result.get("data", {}) or {}
+    member = data.get("membershipCustomer", data)
+    checkout_link = data.get("checkoutLink") or data.get("paymentLink") or member.get("checkoutLink")
+    if not checkout_link:
+        payment_link_id = member.get("paymentLinkId") or data.get("paymentLinkId")
+        if payment_link_id:
+            checkout_link = f"https://mayar.id/pl/checkout?product={payment_link_id}"
+    if not checkout_link:
+        logger.warning(f"Mayar checkout: no usable link in response: {result}")
+    return checkout_link
+
+
+# ---------------------------------------------------------------------------
+# Mayar webhook — grants/revokes premium. `plan` is ONLY ever changed here
+# (and by the self-service /auth/downgrade above), never by /auth/upgrade.
+# ---------------------------------------------------------------------------
+MAYAR_UPGRADE_EVENTS = {"membership.newMemberRegistered", "membership.changeTierMemberRegistered"}
+MAYAR_DOWNGRADE_EVENTS = {"membership.memberExpired", "membership.memberUnsubscribed"}
+
+
+async def find_user_by_mayar_customer(email: Optional[str], mobile: Optional[str]) -> Optional[dict]:
+    email_norm = (email or "").strip().lower()
+    if email_norm:
+        u = await db.users.find_one({"email": email_norm}, {"_id": 0})
+        if u:
+            return u
+    if mobile:
+        try:
+            phone_norm = normalize_phone(mobile)
+        except ValueError:
+            phone_norm = None
+        if phone_norm:
+            u = await db.users.find_one({"phone": phone_norm}, {"_id": 0})
+            if u:
+                return u
+    return None
+
+
+async def process_mayar_event(event: str, data: dict) -> dict:
+    """Shared by the real webhook and /test/simulate-mayar-webhook, so both
+    exercise the identical matching/update/logging logic — never trust a
+    payload blindly: this only acts on event names we recognize, and only
+    updates a user it can actually match by email or phone."""
+    membership_customer = data.get("membershipCustomer") or {}
+    customer_email = data.get("customerEmail") or membership_customer.get("customerEmail")
+    customer_mobile = data.get("customerMobile") or membership_customer.get("customerMobile")
+
+    matched_user = await find_user_by_mayar_customer(customer_email, customer_mobile)
+    is_upgrade = event in MAYAR_UPGRADE_EVENTS or (
+        event == "payment.received" and bool(membership_customer)
+    )
+    is_downgrade = event in MAYAR_DOWNGRADE_EVENTS
+
+    if matched_user and is_upgrade:
+        action = "upgraded_to_premium"
+        await db.users.update_one({"user_id": matched_user["user_id"]}, {"$set": {"plan": "premium"}})
+    elif matched_user and is_downgrade:
+        action = "downgraded_to_free"
+        await db.users.update_one({"user_id": matched_user["user_id"]}, {"$set": {"plan": "free"}})
+    elif not matched_user and (is_upgrade or is_downgrade):
+        action = "no_matching_user"
+    else:
+        action = "ignored_event"
+
+    log_entry = {
+        "id": str(uuid.uuid4()),
+        "event": event,
+        "customer_email": customer_email,
+        "customer_mobile": customer_mobile,
+        "matched_user_id": matched_user["user_id"] if matched_user else None,
+        "action": action,
+        "received_at": now_utc().isoformat(),
+    }
+    await db.mayar_webhook_log.insert_one(log_entry)
+    logger.info(
+        f"Mayar webhook: event={event} action={action} user={log_entry['matched_user_id']}"
+    )
+    return {"action": action, "matched_user_id": log_entry["matched_user_id"]}
+
+
+@api_router.post("/webhooks/mayar")
+async def mayar_webhook(payload: Optional[dict] = None, secret: Optional[str] = None):
+    # Mayar has no signature/HMAC scheme (see MAYAR_WEBHOOK_SECRET comment
+    # above) — this shared-secret query param is the only line of defense,
+    # so it's checked before anything else, and both a missing configured
+    # secret and a mismatched one are rejected identically.
+    if not MAYAR_WEBHOOK_SECRET.strip() or secret != MAYAR_WEBHOOK_SECRET.strip():
+        raise HTTPException(status_code=401, detail="Invalid or missing webhook secret")
+    body = payload or {}
+    event = body.get("event", "")
+    data = body.get("data") or {}
+    result = await process_mayar_event(event, data)
+    return {"status": "ok", **result}
+
+
+class SimulateMayarWebhookBody(BaseModel):
+    event: str = "membership.newMemberRegistered"
+
+
+@api_router.post("/test/simulate-mayar-webhook")
+async def test_simulate_mayar_webhook(
+    body: SimulateMayarWebhookBody, user: dict = Depends(get_current_user)
+):
+    """TESTING ONLY — runs the exact same code path as the real webhook
+    (process_mayar_event), but always targets the CALLER's own account
+    (customerEmail is forced to your logged-in email, never something you
+    pass in), so this can't be used to flip anyone else's plan. Use it to
+    verify event routing + user matching + plan flip + the debug log before
+    Mayar's real webhook exists. Valid `event` values: membership.newMemberRegistered,
+    membership.changeTierMemberRegistered, membership.memberExpired,
+    membership.memberUnsubscribed.
+    """
+    data = {
+        "customerEmail": user["email"],
+        "customerMobile": user.get("phone"),
+        "customerName": user.get("name"),
+    }
+    result = await process_mayar_event(body.event, data)
+    return {"status": "ok", "simulated_event": body.event, **result}
 
 
 @api_router.post("/auth/downgrade")
@@ -1213,6 +1419,7 @@ async def startup():
         await db.notif_log.create_index("key", unique=True)
         await db.spending_snapshots.create_index(
             [("user_id", 1), ("period", 1)], unique=True)
+        await db.mayar_webhook_log.create_index("received_at")
     except Exception as e:
         logger.warning(f"index creation: {e}")
     asyncio.create_task(scheduler_loop())

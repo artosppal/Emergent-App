@@ -65,7 +65,8 @@ export const api = {
     apiFetch("/auth/session", { method: "POST", body: JSON.stringify({ session_id }) }),
   me: () => apiFetch("/auth/me"),
   logout: () => apiFetch("/auth/logout", { method: "POST" }),
-  upgrade: () => apiFetch("/auth/upgrade", { method: "POST" }),
+  upgrade: (tier: "monthly" | "yearly") =>
+    apiFetch("/auth/upgrade", { method: "POST", body: JSON.stringify({ tier }) }),
   downgrade: () => apiFetch("/auth/downgrade", { method: "POST" }),
   updateChannels: (body: { push: boolean; whatsapp: boolean }) =>
     apiFetch("/auth/channels", { method: "PUT", body: JSON.stringify(body) }),

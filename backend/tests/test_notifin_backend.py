@@ -145,10 +145,26 @@ class TestSubscriptionsAndFreemium:
         assert r2.status_code == 200
         assert r2.json()["subscription"]["price"] == 79000
 
-    def test_upgrade_unlocks_unlimited(self, s, free_user):
-        r = s.post(f"{API}/auth/upgrade", headers=auth(free_user["token"]))
-        assert r.status_code == 200
-        assert r.json()["user"]["plan"] == "premium"
+    def test_upgrade_requires_configured_mayar(self, s, free_user):
+        # /auth/upgrade now starts a real Mayar checkout instead of flipping
+        # the plan directly — until MAYAR_API_KEY etc. are set (post-KYC),
+        # it must fail clearly rather than silently granting premium.
+        r = s.post(f"{API}/auth/upgrade", json={"tier": "monthly"},
+                   headers=auth(free_user["token"]))
+        assert r.status_code in (503, 200), r.text
+        if r.status_code == 200:
+            assert "checkout_url" in r.json()
+
+    def test_mayar_webhook_unlocks_unlimited(self, s, free_user):
+        # Premium is only ever granted by the Mayar webhook (or its test
+        # double) confirming payment — simulate that here.
+        r = s.post(f"{API}/test/simulate-mayar-webhook",
+                   json={"event": "membership.newMemberRegistered"},
+                   headers=auth(free_user["token"]))
+        assert r.status_code == 200, r.text
+        assert r.json()["action"] == "upgraded_to_premium"
+        r_me = s.get(f"{API}/auth/me", headers=auth(free_user["token"]))
+        assert r_me.json()["user"]["plan"] == "premium"
         # Now 4th should succeed
         r2 = s.post(f"{API}/subscriptions",
                     json=self._payload(name="TEST_4thPremium"),

@@ -53,7 +53,13 @@ def _register(s, prefix="u"):
 
 
 def _upgrade(s, u):
-    r = s.post(f"{API}/auth/upgrade", headers=auth(u["token"]))
+    # /auth/upgrade now starts a real Mayar checkout instead of flipping the
+    # plan directly, so tests simulate the webhook that actually grants
+    # premium (same one Mayar will call once payment succeeds).
+    r = s.post(f"{API}/test/simulate-mayar-webhook", headers=auth(u["token"]),
+               json={"event": "membership.newMemberRegistered"})
+    assert r.status_code == 200, r.text
+    r = s.get(f"{API}/auth/me", headers=auth(u["token"]))
     assert r.status_code == 200
     u["user"] = r.json()["user"]
     return u
