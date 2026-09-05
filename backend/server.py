@@ -214,6 +214,21 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+
+    # Throttled "last active" tracking for the admin panel — only write if
+    # stale (>10 min) so this doesn't add a DB write to every single request.
+    last_active = user.get("last_active_at")
+    stale = True
+    if last_active:
+        try:
+            stale = (now_utc() - datetime.fromisoformat(last_active)) > timedelta(minutes=10)
+        except Exception:
+            stale = True
+    if stale:
+        now_iso = now_utc().isoformat()
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_active_at": now_iso}})
+        user["last_active_at"] = now_iso
+
     return user
 
 
@@ -401,6 +416,25 @@ async def find_user_by_mayar_customer(email: Optional[str], mobile: Optional[str
     return None
 
 
+DEFAULT_PREMIUM_DAYS = 30  # fallback when Mayar's payload has no real expiry date
+
+
+def parse_mayar_timestamp(value) -> Optional[str]:
+    """Mayar's own doc examples show conflicting formats for date fields —
+    epoch-milliseconds numbers in some, ISO strings in others. Handle both,
+    return None (never raise) if it doesn't parse."""
+    if value is None:
+        return None
+    try:
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(value / 1000, tz=timezone.utc).isoformat()
+        if isinstance(value, str) and value.strip():
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).isoformat()
+    except Exception:
+        return None
+    return None
+
+
 async def process_mayar_event(event: str, data: dict) -> dict:
     """Shared by the real webhook and /test/simulate-mayar-webhook, so both
     exercise the identical matching/update/logging logic — never trust a
@@ -418,10 +452,25 @@ async def process_mayar_event(event: str, data: dict) -> dict:
 
     if matched_user and is_upgrade:
         action = "upgraded_to_premium"
-        await db.users.update_one({"user_id": matched_user["user_id"]}, {"$set": {"plan": "premium"}})
+        expires_at = (
+            parse_mayar_timestamp(membership_customer.get("expiredAt"))
+            or parse_mayar_timestamp(membership_customer.get("nextPayment"))
+            or (now_utc() + timedelta(days=DEFAULT_PREMIUM_DAYS)).isoformat()
+        )
+        await db.users.update_one(
+            {"user_id": matched_user["user_id"]},
+            {"$set": {
+                "plan": "premium",
+                "premium_since": now_utc().isoformat(),
+                "premium_expires_at": expires_at,
+            }},
+        )
     elif matched_user and is_downgrade:
         action = "downgraded_to_free"
-        await db.users.update_one({"user_id": matched_user["user_id"]}, {"$set": {"plan": "free"}})
+        await db.users.update_one(
+            {"user_id": matched_user["user_id"]},
+            {"$set": {"plan": "free", "premium_expires_at": None}},
+        )
     elif not matched_user and (is_upgrade or is_downgrade):
         action = "no_matching_user"
     else:
@@ -1454,6 +1503,12 @@ async def admin_list_users(query: str = "", _: None = Depends(require_admin)):
             {"name": {"$regex": safe_q, "$options": "i"}},
         ]}
     docs = await db.users.find(filt, {"_id": 0}).sort("created_at", -1).to_list(50)
+    sub_counts = await asyncio.gather(
+        *[
+            db.subscriptions.count_documents({"user_id": d["user_id"], "deleted_at": None})
+            for d in docs
+        ]
+    )
     return {
         "users": [
             {
@@ -1462,8 +1517,13 @@ async def admin_list_users(query: str = "", _: None = Depends(require_admin)):
                 "name": d.get("name"),
                 "plan": d.get("plan", "free"),
                 "phone": d.get("phone"),
+                "created_at": d.get("created_at"),
+                "premium_since": d.get("premium_since"),
+                "premium_expires_at": d.get("premium_expires_at"),
+                "last_active_at": d.get("last_active_at"),
+                "subscription_count": count,
             }
-            for d in docs
+            for d, count in zip(docs, sub_counts)
         ]
     }
 
@@ -1477,7 +1537,15 @@ class AdminSetPlanBody(BaseModel):
 async def admin_set_plan(body: AdminSetPlanBody, _: None = Depends(require_admin)):
     if body.plan not in ("free", "premium"):
         raise HTTPException(status_code=422, detail='plan harus "free" atau "premium"')
-    res = await db.users.update_one({"user_id": body.user_id}, {"$set": {"plan": body.plan}})
+    update: dict = {"plan": body.plan}
+    if body.plan == "premium":
+        # Manual grants from this panel always run 30 days from the moment
+        # you click — there's no real Mayar expiry date to use here.
+        update["premium_since"] = now_utc().isoformat()
+        update["premium_expires_at"] = (now_utc() + timedelta(days=DEFAULT_PREMIUM_DAYS)).isoformat()
+    else:
+        update["premium_expires_at"] = None
+    res = await db.users.update_one({"user_id": body.user_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
     logger.info(f"Admin set plan: user={body.user_id} -> {body.plan}")
@@ -1503,7 +1571,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
     width: 100%; max-width: 480px; background: #FFFFFF; border-radius: 20px;
     padding: 28px; box-shadow: 0 16px 32px -20px rgba(11,61,46,0.28);
   }
-  .wide { max-width: 640px; }
+  .wide { max-width: 760px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
   p.sub { color: #6B7280; font-size: 14px; margin: 0 0 20px; }
   input {
@@ -1519,21 +1587,37 @@ ADMIN_PAGE_HTML = """<!doctype html>
   .btn-primary:disabled { opacity: 0.6; cursor: default; }
   .error { color: #EF4444; font-size: 13px; margin: -6px 0 12px; min-height: 16px; }
   .row {
-    display: flex; align-items: center; gap: 12px; padding: 12px 0;
+    padding: 14px 0;
     border-bottom: 1px solid #F3F4F6;
   }
   .row:last-child { border-bottom: none; }
-  .row .info { flex: 1; min-width: 0; }
+  .row-top { display: flex; align-items: center; gap: 12px; }
+  .row-top .info { flex: 1; min-width: 0; }
   .row .name { font-weight: 700; font-size: 14px; }
   .row .email { color: #6B7280; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pill {
     font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
-    text-transform: uppercase; letter-spacing: 0.04em;
+    text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
   }
   .pill-premium { background: #D1FAE5; color: #065F46; }
   .pill-free { background: #E8F0EC; color: #233B33; }
   .btn-toggle { background: #E8F0EC; color: #182924; white-space: nowrap; }
   .btn-toggle:disabled { opacity: 0.5; cursor: default; }
+  .row-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chip {
+    font-size: 12px; color: #374151; background: #F3F4F6; padding: 5px 10px 5px 5px;
+    border-radius: 8px; display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .chip-label {
+    color: #9CA3AF; font-weight: 700; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.03em; background: #fff; padding: 3px 7px; border-radius: 6px;
+  }
+  .chip-ok { background: #ECFDF5; color: #047857; }
+  .chip-ok .chip-label { color: #059669; }
+  .chip-warn { background: #FFFBEB; color: #92400E; }
+  .chip-warn .chip-label { color: #B45309; }
+  .chip-danger { background: #FEF2F2; color: #991B1B; }
+  .chip-danger .chip-label { color: #DC2626; }
   #app { display: none; }
   .top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
   .logout { background: none; color: #6B7280; font-weight: 600; padding: 4px; }
@@ -1622,6 +1706,40 @@ ADMIN_PAGE_HTML = """<!doctype html>
     }
   }
 
+  function fmtDate(iso) {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '-';
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  function renewalInfo(expiresAt) {
+    if (!expiresAt) return { text: '-', cls: '' };
+    const d = new Date(expiresAt);
+    if (isNaN(d.getTime())) return { text: '-', cls: '' };
+    const days = Math.ceil((d.getTime() - Date.now()) / 86400000);
+    if (days < 0) return { text: 'Lewat ' + Math.abs(days) + ' hari', cls: 'chip-danger' };
+    if (days === 0) return { text: 'Hari ini', cls: 'chip-danger' };
+    if (days <= 7) return { text: days + ' hari lagi', cls: 'chip-warn' };
+    return { text: days + ' hari lagi', cls: 'chip-ok' };
+  }
+
+  function lastActiveText(iso) {
+    if (!iso) return 'Belum pernah';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return 'Belum pernah';
+    const mins = Math.round((Date.now() - d.getTime()) / 60000);
+    if (mins < 1) return 'Baru saja';
+    if (mins < 60) return mins + ' menit lalu';
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return hours + ' jam lalu';
+    return Math.round(hours / 24) + ' hari lalu';
+  }
+
+  function chip(label, value, cls) {
+    return '<div class="chip ' + (cls || '') + '"><span class="chip-label">' + label + '</span>' + escapeHtml(String(value)) + '</div>';
+  }
+
   function renderList(users) {
     const list = document.getElementById('list');
     if (!users.length) {
@@ -1630,18 +1748,31 @@ ADMIN_PAGE_HTML = """<!doctype html>
     }
     list.innerHTML = users.map((u) => {
       const isPremium = u.plan === 'premium';
+      const renewal = isPremium ? renewalInfo(u.premium_expires_at) : null;
+      let meta = chip('Daftar', fmtDate(u.created_at));
+      if (isPremium) {
+        meta += chip('Premium sejak', fmtDate(u.premium_since));
+        meta += chip('Renew', renewal.text, renewal.cls);
+      }
+      meta += chip('WA', u.phone ? '+' + u.phone : '-');
+      meta += chip('Langganan', u.subscription_count);
+      meta += chip('Aktif', lastActiveText(u.last_active_at));
+
       return (
         '<div class="row">' +
-          '<div class="info">' +
-            '<div class="name">' + escapeHtml(u.name || '(tanpa nama)') + '</div>' +
-            '<div class="email">' + escapeHtml(u.email || '') + '</div>' +
+          '<div class="row-top">' +
+            '<div class="info">' +
+              '<div class="name">' + escapeHtml(u.name || '(tanpa nama)') + '</div>' +
+              '<div class="email">' + escapeHtml(u.email || '') + '</div>' +
+            '</div>' +
+            '<span class="pill ' + (isPremium ? 'pill-premium' : 'pill-free') + '">' +
+              (isPremium ? 'Premium' : 'Free') +
+            '</span>' +
+            '<button class="btn-toggle" data-uid="' + u.user_id + '" data-plan="' + (isPremium ? 'free' : 'premium') + '" onclick="togglePlan(this)">' +
+              (isPremium ? 'Jadikan Free' : 'Jadikan Premium') +
+            '</button>' +
           '</div>' +
-          '<span class="pill ' + (isPremium ? 'pill-premium' : 'pill-free') + '">' +
-            (isPremium ? 'Premium' : 'Free') +
-          '</span>' +
-          '<button class="btn-toggle" data-uid="' + u.user_id + '" data-plan="' + (isPremium ? 'free' : 'premium') + '" onclick="togglePlan(this)">' +
-            (isPremium ? 'Jadikan Free' : 'Jadikan Premium') +
-          '</button>' +
+          '<div class="row-meta">' + meta + '</div>' +
         '</div>'
       );
     }).join('');
