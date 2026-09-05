@@ -83,6 +83,23 @@ export default function SubscriptionForm() {
   const [registeredWith, setRegisteredWith] = useState("");
   const [showPicker, setShowPicker] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+  const [otherSubs, setOtherSubs] = useState<{ id: string; name: string; registered_with?: string | null }[]>([]);
+
+  // Other active subscriptions that share this exact name (case-insensitive) —
+  // used to require a distinguishing "registered with" value, e.g. two
+  // "CapCut Pro" entries need different accounts to tell them apart.
+  const nameTrimmed = name.trim().toLowerCase();
+  const nameDuplicates = nameTrimmed
+    ? otherSubs.filter((s) => s.id !== params.id && s.name.trim().toLowerCase() === nameTrimmed)
+    : [];
+  const hasDuplicateName = nameDuplicates.length > 0;
+
+  useEffect(() => {
+    api
+      .listSubs("all", "all")
+      .then((res: any) => setOtherSubs(res.subscriptions || []))
+      .catch(() => {});
+  }, []);
 
   const applyPreset = (p: (typeof PRESETS)[number]) => {
     setName(p.name);
@@ -125,6 +142,23 @@ export default function SubscriptionForm() {
       toast.show(t("subscriptionForm.errNameRequired"), "error");
       return;
     }
+    if (hasDuplicateName) {
+      const rw = registeredWith.trim();
+      if (!rw) {
+        toast.show(t("subscriptionForm.errDuplicateNameRequired", { name: name.trim() }), "error");
+        return;
+      }
+      const clash = nameDuplicates.some(
+        (s) => (s.registered_with || "").trim().toLowerCase() === rw.toLowerCase(),
+      );
+      if (clash) {
+        toast.show(
+          t("subscriptionForm.errDuplicateAccount", { account: rw, name: name.trim() }),
+          "error",
+        );
+        return;
+      }
+    }
     const priceNum = parseFloat(price.replace(/[^0-9.]/g, "")) || 0;
     const body = {
       name: name.trim(),
@@ -154,6 +188,10 @@ export default function SubscriptionForm() {
       if (e instanceof ApiError && e.status === 403) {
         router.back();
         setTimeout(showUpgrade, 350);
+        return;
+      }
+      if (e instanceof ApiError && e.status === 422) {
+        toast.show(e.message, "error");
         return;
       }
       toast.show(t("subscriptionForm.errSave"), "error");
@@ -391,10 +429,18 @@ export default function SubscriptionForm() {
         <View style={{ marginTop: spacing.lg }}>
           <Input
             testID="sub-registered-with-input"
-            label={t("subscriptionForm.registeredWithLabel")}
+            label={t(
+              hasDuplicateName
+                ? "subscriptionForm.registeredWithLabelRequired"
+                : "subscriptionForm.registeredWithLabel",
+            )}
             icon="account-key"
             placeholder={t("subscriptionForm.registeredWithPlaceholder")}
-            hint={t("subscriptionForm.registeredWithHint")}
+            hint={t(
+              hasDuplicateName
+                ? "subscriptionForm.registeredWithHintDuplicate"
+                : "subscriptionForm.registeredWithHint",
+            )}
             value={registeredWith}
             onChangeText={setRegisteredWith}
           />

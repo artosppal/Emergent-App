@@ -61,6 +61,7 @@ export const translations = {
       calmText: "Aman! Gak ada yang jatuh tempo dalam 7 hari ke depan.",
       categorySection: "Pengeluaran per kategori",
       limitProgress: "{{pct}}% dari limit {{limit}}/bulan",
+      viewChart: "Lihat grafik pengeluaran",
     },
     groups: {
       title: "Grup",
@@ -237,12 +238,37 @@ export const translations = {
       notesLabel: "Catatan (opsional)",
       notesPlaceholder: "mis. akun bareng si A",
       registeredWithLabel: "Terdaftar dengan (opsional)",
+      registeredWithLabelRequired: "Terdaftar dengan (wajib — ada nama sama)",
       registeredWithPlaceholder: "Email, akun, atau no. HP",
       registeredWithHint: "Supaya gak lupa akun",
+      registeredWithHintDuplicate:
+        "Sudah ada langganan dengan nama ini. Isi kolom ini biar bisa dibedakan, misal \"Fulan\".",
+      errDuplicateNameRequired:
+        'Sudah ada langganan "{{name}}" lain. Isi "Terdaftar dengan" biar bisa dibedakan.',
+      errDuplicateAccount:
+        'Akun "{{account}}" sudah dipakai untuk langganan "{{name}}" lainnya. Pakai akun yang berbeda.',
       confirmDelete: "Tap lagi untuk konfirmasi hapus",
       deleteButton: "Hapus langganan",
       saveChanges: "Simpan Perubahan",
       saveNew: "Simpan Langganan",
+    },
+    spendingHistory: {
+      title: "Riwayat Pengeluaran",
+      subtitleMonthly: "Pantau pengeluaran langgananmu naik-turun dari bulan ke bulan.",
+      subtitleYearly: "Lihat gambaran besar pengeluaran langgananmu dari tahun ke tahun.",
+      toggleMonthly: "Bulanan",
+      toggleYearly: "Tahunan",
+      emptyTitle: "Grafik ini baru mulai dicatat",
+      emptySubtitle:
+        "Setiap kali kamu buka Notifin, pengeluaran bulan ini otomatis tersimpan sebagai data asli — bukan tebakan. Balik lagi bulan depan buat lihat perbandingannya!",
+      singlePointNote: "Baru {{count}} bulan tercatat — perbandingan akan makin jelas seiring waktu.",
+      singlePointNoteYearly:
+        "Baru {{count}} tahun tercatat — perbandingan akan makin jelas seiring waktu.",
+      trendUp: "Naik {{pct}}% dari periode sebelumnya",
+      trendDown: "Turun {{pct}}% dari periode sebelumnya",
+      trendFlat: "Sama seperti periode sebelumnya",
+      trackingSince: "Tercatat otomatis sejak {{period}}",
+      errLoad: "Gagal memuat data grafik",
     },
     categories: {
       entertainment: "Hiburan",
@@ -347,6 +373,7 @@ export const translations = {
       calmText: "All clear! Nothing due in the next 7 days.",
       categorySection: "Spending by category",
       limitProgress: "{{pct}}% of {{limit}}/month limit",
+      viewChart: "View spending chart",
     },
     groups: {
       title: "Groups",
@@ -523,12 +550,36 @@ export const translations = {
       notesLabel: "Notes (optional)",
       notesPlaceholder: "e.g. shared account with a friend",
       registeredWithLabel: "Registered with (optional)",
+      registeredWithLabelRequired: "Registered with (required — same name exists)",
       registeredWithPlaceholder: "Email, account, or phone number",
       registeredWithHint: "So you don't forget the account",
+      registeredWithHintDuplicate:
+        "You already have a subscription with this name. Fill this in to tell them apart, e.g. \"John\".",
+      errDuplicateNameRequired:
+        'You already have another "{{name}}" subscription. Fill in "Registered with" to tell them apart.',
+      errDuplicateAccount:
+        'The account "{{account}}" is already used for another "{{name}}" subscription. Use a different account.',
       confirmDelete: "Tap again to confirm delete",
       deleteButton: "Delete subscription",
       saveChanges: "Save Changes",
       saveNew: "Save Subscription",
+    },
+    spendingHistory: {
+      title: "Spending History",
+      subtitleMonthly: "Track how your subscription spending moves month to month.",
+      subtitleYearly: "See the big picture of your subscription spending year to year.",
+      toggleMonthly: "Monthly",
+      toggleYearly: "Yearly",
+      emptyTitle: "This chart just started tracking",
+      emptySubtitle:
+        "Every time you open Notifin, this month's spending is saved as real data — never guessed. Come back next month to see the comparison!",
+      singlePointNote: "Only {{count}} month tracked so far — comparisons get clearer over time.",
+      singlePointNoteYearly: "Only {{count}} year tracked so far — comparisons get clearer over time.",
+      trendUp: "Up {{pct}}% from the previous period",
+      trendDown: "Down {{pct}}% from the previous period",
+      trendFlat: "Same as the previous period",
+      trackingSince: "Automatically tracked since {{period}}",
+      errLoad: "Failed to load chart data",
     },
     categories: {
       entertainment: "Entertainment",

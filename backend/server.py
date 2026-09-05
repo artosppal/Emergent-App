@@ -367,6 +367,35 @@ async def active_count(user_id: str) -> int:
     )
 
 
+async def ensure_distinct_registered_with(
+    user_id: str, name: str, registered_with: Optional[str], exclude_id: Optional[str] = None,
+):
+    """Kalau ada langganan lain dengan nama sama (case-insensitive), wajib isi
+    `registered_with` yang berbeda supaya keduanya bisa dibedakan."""
+    q: dict = {"user_id": user_id, "deleted_at": None}
+    if exclude_id:
+        q["id"] = {"$ne": exclude_id}
+    existing = await db.subscriptions.find(q, {"_id": 0}).to_list(500)
+    name_norm = name.strip().lower()
+    dupes = [d for d in existing if (d.get("name") or "").strip().lower() == name_norm]
+    if not dupes:
+        return
+    rw = (registered_with or "").strip()
+    if not rw:
+        raise HTTPException(
+            status_code=422,
+            detail=f'Sudah ada langganan "{name}" lain. Isi "Terdaftar dengan" biar bisa dibedakan.',
+        )
+    rw_norm = rw.lower()
+    for d in dupes:
+        other_rw = (d.get("registered_with") or "").strip().lower()
+        if other_rw and other_rw == rw_norm:
+            raise HTTPException(
+                status_code=422,
+                detail=f'Akun "{rw}" sudah dipakai untuk langganan "{name}" lainnya. Pakai akun yang berbeda.',
+            )
+
+
 @api_router.get("/subscriptions")
 async def list_subscriptions(
     category: Optional[str] = None,
@@ -392,6 +421,7 @@ async def create_subscription(body: SubscriptionBody, user: dict = Depends(get_c
                 detail={"code": "limit_reached",
                         "message": f"Paket gratis maksimal {FREE_PLAN_LIMIT} langganan aktif."},
             )
+    await ensure_distinct_registered_with(user["user_id"], body.name, body.registered_with)
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["user_id"],
@@ -419,6 +449,8 @@ async def update_subscription(sub_id: str, body: SubscriptionBody, user: dict = 
         {"id": sub_id, "user_id": user["user_id"], "deleted_at": None})
     if not doc:
         raise HTTPException(status_code=404, detail="Langganan tidak ditemukan")
+    await ensure_distinct_registered_with(
+        user["user_id"], body.name, body.registered_with, exclude_id=sub_id)
     update = {**body.model_dump(), "updated_at": now_utc().isoformat()}
     await db.subscriptions.update_one({"id": sub_id}, {"$set": update})
     updated = await db.subscriptions.find_one({"id": sub_id}, {"_id": 0})
@@ -484,6 +516,17 @@ async def dashboard(user: dict = Depends(get_current_user)):
     ending_trials.sort(key=lambda x: x.get("days_left", 99))
     by_category = sorted(by_cat.values(), key=lambda x: x["total"], reverse=True)
 
+    # Real spending history (for the spending chart): record/refresh a snapshot
+    # of *this* month's total every time the dashboard is viewed. Past months'
+    # snapshots are never touched again once the month has moved on, so they
+    # become the permanent historical record — data starts accumulating from
+    # today, not reconstructed/estimated from subscription start dates.
+    await db.spending_snapshots.update_one(
+        {"user_id": user["user_id"], "period": today.strftime("%Y-%m")},
+        {"$set": {"total": round(total_monthly), "updated_at": now_utc().isoformat()}},
+        upsert=True,
+    )
+
     return {
         "total_this_month": round(total_monthly),
         "projection_next_month": round(total_monthly),
@@ -500,6 +543,32 @@ async def dashboard(user: dict = Depends(get_current_user)):
             {"category": c["category"], "total": round(c["total"]), "count": c["count"]}
             for c in by_category
         ],
+    }
+
+
+@api_router.get("/analytics/spending")
+async def spending_history(range: str = "monthly", user: dict = Depends(get_current_user)):
+    """Real, tracked spending history — each row is a snapshot taken the last
+    time the dashboard was loaded during that month (see /dashboard above).
+    Nothing is backfilled/estimated: history only exists from the point this
+    feature shipped onward, and grows one entry per month as time passes."""
+    snapshots = await db.spending_snapshots.find(
+        {"user_id": user["user_id"]}, {"_id": 0}).sort("period", 1).to_list(240)
+
+    if range == "yearly":
+        by_year: dict = {}
+        for s in snapshots:
+            year = s["period"][:4]
+            by_year.setdefault(year, 0)
+            by_year[year] += s.get("total", 0)
+        points = [{"period": y, "total": round(t)} for y, t in sorted(by_year.items())]
+    else:
+        points = [{"period": s["period"], "total": round(s.get("total", 0))} for s in snapshots]
+
+    return {
+        "range": "yearly" if range == "yearly" else "monthly",
+        "points": points,
+        "tracking_since": snapshots[0]["period"] if snapshots else None,
     }
 
 
@@ -1142,6 +1211,8 @@ async def startup():
         await db.group_subscriptions.create_index("id", unique=True)
         await db.group_subscriptions.create_index("group_id")
         await db.notif_log.create_index("key", unique=True)
+        await db.spending_snapshots.create_index(
+            [("user_id", 1), ("period", 1)], unique=True)
     except Exception as e:
         logger.warning(f"index creation: {e}")
     asyncio.create_task(scheduler_loop())

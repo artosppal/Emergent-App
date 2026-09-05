@@ -128,6 +128,11 @@ export default function Dashboard() {
 
       {/* Total spend card */}
       <View style={styles.section}>
+        <Pressable
+          testID="total-spend-card"
+          onPress={() => router.push("/spending-history")}
+          style={({ pressed }) => pressed && { opacity: 0.92 }}
+        >
         <LinearGradient
           colors={totalCardColors}
           start={{ x: 0, y: 0 }}
@@ -163,7 +168,13 @@ export default function Dashboard() {
               </Text>
             </View>
           )}
+          <View style={styles.chartHintRow}>
+            <MaterialCommunityIcons name="chart-bar" size={13} color="rgba(255,255,255,0.85)" />
+            <Text style={styles.chartHintText}>{t("dashboard.viewChart")}</Text>
+            <MaterialCommunityIcons name="chevron-right" size={15} color="rgba(255,255,255,0.85)" />
+          </View>
         </LinearGradient>
+        </Pressable>
       </View>
 
       {isEmpty ? (
@@ -205,6 +216,9 @@ export default function Dashboard() {
                       <Text style={styles.borosLabel}>{t("dashboard.mostExpensiveLabel")}</Text>
                       <Text style={styles.borosName} numberOfLines={1}>
                         {data.most_expensive.name}
+                        {data.most_expensive.registered_with
+                          ? ` (${data.most_expensive.registered_with})`
+                          : ""}
                       </Text>
                       <Text style={styles.borosMeta}>
                         {t("dashboard.mostExpensiveMeta", {
@@ -230,7 +244,7 @@ export default function Dashboard() {
                     <MaterialCommunityIcons name="timer-sand" size={22} color="#B45309" />
                     <Text style={styles.trialWarnText} numberOfLines={2}>
                       {t("dashboard.trialWarning", {
-                        name: tr.name,
+                        name: tr.registered_with ? `${tr.name} (${tr.registered_with})` : tr.name,
                         ending:
                           tr.days_left === 0
                             ? t("dashboard.trialEndsToday")
@@ -337,6 +351,16 @@ const styles = StyleSheet.create({
   totalValue: { fontFamily: font.extrabold, fontSize: 40, color: "#FFFFFF", marginTop: spacing.sm },
   projRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.md },
   projText: { fontFamily: font.medium, fontSize: fontSize.base, color: "rgba(255,255,255,0.9)" },
+  chartHintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.25)",
+  },
+  chartHintText: { fontFamily: font.bold, fontSize: fontSize.sm, color: "rgba(255,255,255,0.95)" },
 
   calmCard: {
     flexDirection: "row",

@@ -75,6 +75,8 @@ export const api = {
     apiFetch("/auth/limit", { method: "PUT", body: JSON.stringify({ monthly_limit }) }),
 
   dashboard: () => apiFetch("/dashboard"),
+  spendingHistory: (range: "monthly" | "yearly") =>
+    apiFetch(`/analytics/spending?range=${range}`),
   listSubs: (category?: string, status?: string) => {
     const p = new URLSearchParams();
     if (category) p.append("category", category);

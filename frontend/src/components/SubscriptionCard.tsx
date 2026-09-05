@@ -86,6 +86,9 @@ export function SubscriptionCard({
       <View style={styles.mid}>
         <Text style={styles.name} numberOfLines={1}>
           {sub.name}
+          {sub.registered_with ? (
+            <Text style={styles.nameAccount}> ({sub.registered_with})</Text>
+          ) : null}
         </Text>
         <View style={styles.metaRow}>
           <View style={[styles.dot, { backgroundColor: cat.color }]} />
@@ -141,6 +144,7 @@ const styles = StyleSheet.create({
   },
   mid: { flex: 1, gap: 3 },
   name: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface },
+  nameAccount: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.muted },
   metaRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   dot: { width: 7, height: 7, borderRadius: 4 },
   meta: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted, flex: 1 },

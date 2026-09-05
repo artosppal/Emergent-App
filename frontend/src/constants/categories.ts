@@ -20,18 +20,21 @@ export interface CategoryDef {
   color: string;
 }
 
+// Sengaja menghindari merah/kuning/hijau — warna itu dipakai khusus untuk
+// status kondisi keuangan (aman/mendekati limit/lewat limit) di Dashboard,
+// supaya warna kategori langganan tidak disalahartikan sebagai status keuangan.
 export const CATEGORIES: CategoryDef[] = [
-  { key: "entertainment", label: "Hiburan", icon: "movie-open", color: "#EF4444" },
+  { key: "entertainment", label: "Hiburan", icon: "movie-open", color: "#D946EF" },
   { key: "music", label: "Musik", icon: "music", color: "#8B5CF6" },
   { key: "productivity", label: "Produktivitas", icon: "briefcase-variant", color: "#0EA5E9" },
-  { key: "education", label: "Edukasi", icon: "school", color: "#F59E0B" },
+  { key: "education", label: "Edukasi", icon: "school", color: "#78716C" },
   { key: "gaming", label: "Game", icon: "gamepad-variant", color: "#6366F1" },
   { key: "cloud", label: "Cloud & Storage", icon: "cloud", color: "#3B82F6" },
-  { key: "shopping", label: "Belanja", icon: "cart", color: "#10B981" },
+  { key: "shopping", label: "Belanja", icon: "cart", color: "#06B6D4" },
   { key: "health", label: "Kesehatan", icon: "heart-pulse", color: "#EC4899" },
   { key: "news", label: "Berita", icon: "newspaper-variant", color: "#14B8A6" },
   { key: "utilities", label: "Utilitas", icon: "wrench", color: "#64748B" },
-  { key: "other", label: "Lainnya", icon: "dots-horizontal-circle", color: "#059669" },
+  { key: "other", label: "Lainnya", icon: "dots-horizontal-circle", color: "#71717A" },
 ];
 
 export const CATEGORY_MAP: Record<string, CategoryDef> = CATEGORIES.reduce(

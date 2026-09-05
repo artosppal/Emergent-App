@@ -85,6 +85,7 @@ function RootNavigator() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="subscription/form" options={{ presentation: "modal" }} />
+      <Stack.Screen name="spending-history" />
       <Stack.Screen name="group/[id]" />
       <Stack.Screen name="group/add-sub" options={{ presentation: "modal" }} />
       <Stack.Screen name="group/history" />
