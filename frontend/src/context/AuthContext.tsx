@@ -1,11 +1,16 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { Platform } from "react-native";
+import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
 import { api, setToken, getToken, ApiError } from "@/src/lib/api";
 
 WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || "";
+const GOOGLE_DISCOVERY = {
+  authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+};
 
 export interface User {
   user_id: string;
@@ -31,14 +36,6 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
-
-const processedSessionIds = new Set<string>();
-
-function extractSessionId(url: string | null): string | null {
-  if (!url) return null;
-  const m = url.match(/[?#&]session_id=([^&#]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUserState] = useState<User | null>(null);
@@ -73,17 +70,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [registerPush],
   );
 
-  const exchangeSession = useCallback(
-    async (sessionId: string) => {
-      if (processedSessionIds.has(sessionId)) return;
-      processedSessionIds.add(sessionId);
-      const res: any = await api.googleSession(sessionId);
-      await setToken(res.session_token);
-      applyUser(res.user);
-    },
-    [applyUser],
-  );
-
   const refresh = useCallback(async () => {
     try {
       const res: any = await api.me();
@@ -96,17 +82,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyUser]);
 
-  // Bootstrap: handle cold-start deep link session_id, else existing token.
+  // Bootstrap: restore an existing session token, if any.
   useEffect(() => {
     (async () => {
       try {
-        const initialUrl = await Linking.getInitialURL();
-        const sid = extractSessionId(initialUrl);
-        if (sid) {
-          await exchangeSession(sid);
-          setLoading(false);
-          return;
-        }
         const token = await getToken();
         if (token) {
           await refresh();
@@ -114,13 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {}
       setLoading(false);
     })();
-
-    const sub = Linking.addEventListener("url", ({ url }) => {
-      const sid = extractSessionId(url);
-      if (sid) exchangeSession(sid).catch(() => {});
-    });
-    return () => sub.remove();
-  }, [exchangeSession, refresh]);
+  }, [refresh]);
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -141,25 +114,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const loginWithGoogle = useCallback(async () => {
-    const redirectUrl =
-      Platform.OS === "web"
-        ? window.location.origin + "/"
-        : Linking.createURL("");
-    const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(
-      redirectUrl,
-    )}`;
-
-    if (Platform.OS === "web") {
-      window.location.href = authUrl;
-      return;
+    if (!GOOGLE_CLIENT_ID) {
+      throw new Error("Login Google belum dikonfigurasi");
     }
-    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
-    let url: string | null = null;
-    if (result.type === "success" && result.url) url = result.url;
-    if (!url) url = await Linking.getInitialURL();
-    const sid = extractSessionId(url);
-    if (sid) await exchangeSession(sid);
-  }, [exchangeSession]);
+    const redirectUri = AuthSession.makeRedirectUri();
+    const request = new AuthSession.AuthRequest({
+      clientId: GOOGLE_CLIENT_ID,
+      scopes: ["openid", "profile", "email"],
+      redirectUri,
+      responseType: AuthSession.ResponseType.Code,
+      usePKCE: true,
+    });
+    const result = await request.promptAsync(GOOGLE_DISCOVERY);
+    if (result.type !== "success" || !result.params.code) return;
+    const res: any = await api.googleSession({
+      code: result.params.code,
+      redirect_uri: redirectUri,
+      code_verifier: request.codeVerifier,
+    });
+    await setToken(res.session_token);
+    applyUser(res.user);
+  }, [applyUser]);
 
   const logout = useCallback(async () => {
     try {

@@ -39,7 +39,16 @@ SESSION_DAYS = 7
 # Emergent managed push
 PUSH_BASE_URL = "https://integrations.emergentagent.com"
 PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
-EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+
+# Google Sign-In (direct OAuth 2.0, authorization code + PKCE from the client,
+# exchanged for tokens here on the backend with the client secret). Both stay
+# empty until you create an OAuth client in Google Cloud Console and fill
+# them in on Railway — /auth/session returns a clear "not configured" error
+# until then.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 FREE_PLAN_LIMIT = 3
 
@@ -173,8 +182,10 @@ class LoginBody(BaseModel):
     password: str
 
 
-class SessionBody(BaseModel):
-    session_id: str
+class GoogleAuthBody(BaseModel):
+    code: str
+    redirect_uri: str
+    code_verifier: Optional[str] = None
 
 
 class SubscriptionBody(BaseModel):
@@ -271,18 +282,44 @@ async def login(body: LoginBody):
 
 
 @api_router.post("/auth/session")
-async def google_session(body: SessionBody):
+async def google_session(body: GoogleAuthBody):
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="Login Google belum dikonfigurasi di server")
+
     try:
-        resp = await httpx.AsyncClient(timeout=10.0).get(
-            EMERGENT_AUTH_URL, headers={"X-Session-ID": body.session_id}
-        )
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            token_resp = await http.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "code": body.code,
+                    "client_id": GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "redirect_uri": body.redirect_uri,
+                    "grant_type": "authorization_code",
+                    **({"code_verifier": body.code_verifier} if body.code_verifier else {}),
+                },
+            )
+            if token_resp.status_code != 200:
+                logger.warning(f"Google token exchange failed: {token_resp.text}")
+                raise HTTPException(status_code=401, detail="Sesi Google tidak valid")
+            access_token = token_resp.json().get("access_token")
+
+            userinfo_resp = await http.get(
+                GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}
+            )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"Emergent auth error: {e}")
+        logger.warning(f"Google auth error: {e}")
         raise HTTPException(status_code=401, detail="Auth gagal")
-    if resp.status_code != 200:
-        raise HTTPException(status_code=401, detail="Sesi tidak valid")
-    data = resp.json()
+
+    if userinfo_resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Sesi Google tidak valid")
+    data = userinfo_resp.json()
     email = (data.get("email") or "").lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="Google tidak mengembalikan email")
+
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing:
         user = existing
@@ -298,7 +335,7 @@ async def google_session(body: SessionBody):
             "created_at": now_utc().isoformat(),
         }
         await db.users.insert_one(user)
-    token = data.get("session_token") or make_session_token(user["user_id"])
+    token = make_session_token(user["user_id"])
     await persist_session(user["user_id"], token)
     return {"session_token": token, "user": public_user(user)}
 

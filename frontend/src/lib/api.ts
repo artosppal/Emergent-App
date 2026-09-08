@@ -61,8 +61,8 @@ export const api = {
     apiFetch("/auth/register", { method: "POST", body: JSON.stringify(body) }),
   login: (body: { email: string; password: string }) =>
     apiFetch("/auth/login", { method: "POST", body: JSON.stringify(body) }),
-  googleSession: (session_id: string) =>
-    apiFetch("/auth/session", { method: "POST", body: JSON.stringify({ session_id }) }),
+  googleSession: (body: { code: string; redirect_uri: string; code_verifier?: string | null }) =>
+    apiFetch("/auth/session", { method: "POST", body: JSON.stringify(body) }),
   me: () => apiFetch("/auth/me"),
   logout: () => apiFetch("/auth/logout", { method: "POST" }),
   upgrade: (tier: "monthly" | "yearly") =>
