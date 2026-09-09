@@ -552,14 +552,12 @@ export default function Account() {
                           <Text style={styles.offerBadgeText}>{t("downgradeFlow.offerRecommended")}</Text>
                         </View>
                       )}
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.offerLabel}>{o.label}</Text>
-                        <View style={{ flexDirection: "row", alignItems: "baseline", gap: spacing.sm }}>
-                          <Text style={styles.offerPrice}>{formatRupiah(o.price)}</Text>
-                          <Text style={styles.offerWas}>{formatRupiah(o.was)}</Text>
-                        </View>
-                        <Text style={styles.offerSave}>{t("downgradeFlow.offerSave", { pct: o.pct })}</Text>
+                      <Text style={styles.offerLabel}>{o.label}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: spacing.sm }}>
+                        <Text style={styles.offerPrice}>{formatRupiah(o.price)}</Text>
+                        <Text style={styles.offerWas}>{formatRupiah(o.was)}</Text>
                       </View>
+                      <Text style={styles.offerSave}>{t("downgradeFlow.offerSave", { pct: o.pct })}</Text>
                       <Pressable
                         testID={`downgrade-offer-${o.key}`}
                         style={[styles.offerTakeBtn, o.best && styles.offerTakeBtnBest]}
@@ -772,9 +770,6 @@ const styles = StyleSheet.create({
   reasonTextActive: { fontFamily: font.semibold, color: colors.onBrandTertiary },
 
   offerCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
     padding: spacing.lg,
     borderRadius: radius.lg,
     borderWidth: 1.5,
@@ -802,12 +797,12 @@ const styles = StyleSheet.create({
   },
   offerSave: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.brand, marginTop: 2 },
   offerTakeBtn: {
-    paddingHorizontal: spacing.md,
+    alignSelf: "stretch",
+    marginTop: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     borderWidth: 1.5,
     borderColor: colors.brand,
-    minWidth: 92,
     alignItems: "center",
   },
   offerTakeBtnBest: { backgroundColor: colors.brand, borderColor: colors.brand },
