@@ -8,6 +8,8 @@ import {
   Switch,
   Platform,
   Modal,
+  Linking,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useContext } from "react";
@@ -102,12 +104,83 @@ export default function Account() {
     saveChannels(push, val);
   };
 
-  const downgrade = async () => {
+  type DowngradeStep = "closed" | "confirm" | "reason" | "offer";
+  const [downgradeStep, setDowngradeStep] = useState<DowngradeStep>("closed");
+  const [downgradeReason, setDowngradeReason] = useState<string | null>(null);
+  const [downgradeReasonOther, setDowngradeReasonOther] = useState("");
+  const [downgradeBusy, setDowngradeBusy] = useState(false);
+  const [offerBusy, setOfferBusy] = useState<"3m" | "6m" | "12m" | null>(null);
+
+  const DOWNGRADE_REASONS: { code: string; label: string }[] = [
+    { code: "too_expensive", label: t("downgradeFlow.reasonTooExpensive") },
+    { code: "rarely_used", label: t("downgradeFlow.reasonRarelyUsed") },
+    { code: "missing_features", label: t("downgradeFlow.reasonMissingFeatures") },
+    { code: "switching_app", label: t("downgradeFlow.reasonSwitchingApp") },
+    { code: "just_trying", label: t("downgradeFlow.reasonJustTrying") },
+    { code: "other", label: t("downgradeFlow.reasonOther") },
+  ];
+
+  const closeDowngradeFlow = () => {
+    setDowngradeStep("closed");
+    setDowngradeReason(null);
+    setDowngradeReasonOther("");
+  };
+
+  const submitDowngradeReason = async () => {
+    if (!downgradeReason) {
+      toast.show(t("downgradeFlow.errReason"), "error");
+      return;
+    }
+    if (downgradeReason === "other" && !downgradeReasonOther.trim()) {
+      toast.show(t("downgradeFlow.errReasonOther"), "error");
+      return;
+    }
+    setDowngradeBusy(true);
+    try {
+      await api.downgradeFeedback({
+        reason: downgradeReason,
+        reason_other: downgradeReason === "other" ? downgradeReasonOther.trim() : null,
+      });
+      setDowngradeStep("offer");
+    } catch {
+      toast.show(t("downgradeFlow.errReason"), "error");
+    } finally {
+      setDowngradeBusy(false);
+    }
+  };
+
+  const takeRetentionOffer = async (offer: "3m" | "6m" | "12m") => {
+    setOfferBusy(offer);
+    try {
+      const res: any = await api.retentionOffer(offer);
+      if (res.checkout_url) {
+        closeDowngradeFlow();
+        await Linking.openURL(res.checkout_url);
+      } else {
+        toast.show(t("downgradeFlow.errOffer"), "error");
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 503) {
+        toast.show(e.message, "info");
+      } else {
+        toast.show(t("downgradeFlow.errOffer"), "error");
+      }
+    } finally {
+      setOfferBusy(null);
+    }
+  };
+
+  const declineOfferAndDowngrade = async () => {
+    setDowngradeBusy(true);
     try {
       const res: any = await api.downgrade();
       setUser(res.user);
+      closeDowngradeFlow();
       toast.show(t("account.downgradedToast"), "info");
-    } catch {}
+    } catch {
+    } finally {
+      setDowngradeBusy(false);
+    }
   };
 
   const initials = (user?.name || "U")
@@ -290,7 +363,11 @@ export default function Account() {
       <View style={styles.card}>
         {isPremium && (
           <>
-            <Pressable testID="downgrade-button" style={styles.actionRow} onPress={downgrade}>
+            <Pressable
+              testID="downgrade-button"
+              style={styles.actionRow}
+              onPress={() => setDowngradeStep("confirm")}
+            >
               <MaterialCommunityIcons name="arrow-down-circle-outline" size={20} color={colors.muted} />
               <Text style={styles.actionText}>{t("account.downgradeAction")}</Text>
             </Pressable>
@@ -367,6 +444,152 @@ export default function Account() {
             <Pressable style={styles.cancelBtn} onPress={() => setLimitModal(false)}>
               <Text style={styles.cancelText}>{t("common.cancel")}</Text>
             </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Downgrade-to-Free flow: confirm -> reason -> retention offer */}
+      <Modal
+        visible={downgradeStep !== "closed"}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDowngradeFlow}
+      >
+        <Pressable style={styles.backdrop} onPress={closeDowngradeFlow}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            {downgradeStep === "confirm" && (
+              <>
+                <Text style={styles.modalTitle}>{t("downgradeFlow.confirmTitle")}</Text>
+                <Text style={styles.modalSub}>{t("downgradeFlow.confirmSub")}</Text>
+                <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
+                  {[
+                    "downgradeFlow.loseUnlimited",
+                    "downgradeFlow.loseWhatsapp",
+                    "downgradeFlow.loseFamily",
+                    "downgradeFlow.loseSummary",
+                  ].map((key) => (
+                    <View key={key} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                      <MaterialCommunityIcons name="close-circle" size={16} color={colors.error} />
+                      <Text style={{ fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface }}>
+                        {t(key)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                <Button
+                  testID="downgrade-confirm-button"
+                  title={t("downgradeFlow.confirmContinue")}
+                  variant="danger"
+                  onPress={() => setDowngradeStep("reason")}
+                />
+                <Pressable style={styles.cancelBtn} onPress={closeDowngradeFlow}>
+                  <Text style={styles.cancelText}>{t("downgradeFlow.confirmCancel")}</Text>
+                </Pressable>
+              </>
+            )}
+
+            {downgradeStep === "reason" && (
+              <>
+                <Text style={styles.modalTitle}>{t("downgradeFlow.reasonTitle")}</Text>
+                <Text style={styles.modalSub}>{t("downgradeFlow.reasonSub")}</Text>
+                <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
+                  {DOWNGRADE_REASONS.map((r) => {
+                    const active = downgradeReason === r.code;
+                    return (
+                      <Pressable
+                        key={r.code}
+                        testID={`downgrade-reason-${r.code}`}
+                        onPress={() => setDowngradeReason(r.code)}
+                        style={[styles.reasonRow, active && styles.reasonRowActive]}
+                      >
+                        <MaterialCommunityIcons
+                          name={active ? "radiobox-marked" : "radiobox-blank"}
+                          size={20}
+                          color={active ? colors.brand : colors.muted}
+                        />
+                        <Text style={[styles.reasonText, active && styles.reasonTextActive]}>{r.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                  {downgradeReason === "other" && (
+                    <Input
+                      testID="downgrade-reason-other-input"
+                      placeholder={t("downgradeFlow.reasonOtherPlaceholder")}
+                      value={downgradeReasonOther}
+                      onChangeText={setDowngradeReasonOther}
+                      autoFocus
+                    />
+                  )}
+                </View>
+                <Button
+                  testID="downgrade-reason-submit"
+                  title={t("downgradeFlow.reasonContinue")}
+                  onPress={submitDowngradeReason}
+                  loading={downgradeBusy}
+                />
+                <Pressable style={styles.cancelBtn} onPress={() => setDowngradeStep("confirm")}>
+                  <Text style={styles.cancelText}>{t("downgradeFlow.reasonBack")}</Text>
+                </Pressable>
+              </>
+            )}
+
+            {downgradeStep === "offer" && (
+              <>
+                <Text style={styles.modalTitle}>{t("downgradeFlow.offerTitle")}</Text>
+                <Text style={styles.modalSub}>{t("downgradeFlow.offerSub")}</Text>
+
+                <View style={{ gap: spacing.md, marginBottom: spacing.lg }}>
+                  {(
+                    [
+                      { key: "3m" as const, label: t("downgradeFlow.offer3mLabel"), price: 39000, was: 57000, pct: 32 },
+                      { key: "6m" as const, label: t("downgradeFlow.offer6mLabel"), price: 69000, was: 114000, pct: 40, best: true },
+                      { key: "12m" as const, label: t("downgradeFlow.offer12mLabel"), price: 99000, was: 149000, pct: 34 },
+                    ]
+                  ).map((o) => (
+                    <View key={o.key} style={[styles.offerCard, o.best && styles.offerCardBest]}>
+                      {o.best && (
+                        <View style={styles.offerBadge}>
+                          <Text style={styles.offerBadgeText}>{t("downgradeFlow.offerRecommended")}</Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.offerLabel}>{o.label}</Text>
+                        <View style={{ flexDirection: "row", alignItems: "baseline", gap: spacing.xs }}>
+                          <Text style={styles.offerPrice}>{formatRupiah(o.price)}</Text>
+                          <Text style={styles.offerWas}>{formatRupiah(o.was)}</Text>
+                        </View>
+                        <Text style={styles.offerSave}>{t("downgradeFlow.offerSave", { pct: o.pct })}</Text>
+                      </View>
+                      <Pressable
+                        testID={`downgrade-offer-${o.key}`}
+                        style={[styles.offerTakeBtn, o.best && styles.offerTakeBtnBest]}
+                        onPress={() => takeRetentionOffer(o.key)}
+                        disabled={offerBusy !== null}
+                      >
+                        {offerBusy === o.key ? (
+                          <ActivityIndicator color={o.best ? colors.onBrandPrimary : colors.brand} size="small" />
+                        ) : (
+                          <Text style={[styles.offerTakeBtnText, o.best && styles.offerTakeBtnTextBest]}>
+                            {t("downgradeFlow.offerTake")}
+                          </Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+
+                <Pressable
+                  testID="downgrade-decline-offer"
+                  style={styles.cancelBtn}
+                  onPress={declineOfferAndDowngrade}
+                  disabled={downgradeBusy}
+                >
+                  <Text style={styles.cancelText}>
+                    {downgradeBusy ? "..." : t("downgradeFlow.offerDecline")}
+                  </Text>
+                </Pressable>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -533,4 +756,61 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: spacing.xl,
   },
+
+  reasonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  reasonRowActive: { borderColor: colors.brand, backgroundColor: colors.brandTertiary },
+  reasonText: { flex: 1, fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface },
+  reasonTextActive: { fontFamily: font.semibold, color: colors.onBrandTertiary },
+
+  offerCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  offerCardBest: { borderColor: colors.brand, backgroundColor: colors.brandTertiary },
+  offerBadge: {
+    position: "absolute",
+    top: -10,
+    left: spacing.lg,
+    backgroundColor: colors.brand,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
+  offerBadgeText: { fontFamily: font.bold, fontSize: 10, color: colors.onBrandPrimary },
+  offerLabel: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
+  offerPrice: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: colors.brandDark, marginTop: 2 },
+  offerWas: {
+    fontFamily: font.medium,
+    fontSize: fontSize.sm,
+    color: colors.muted,
+    textDecorationLine: "line-through",
+  },
+  offerSave: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.brand, marginTop: 2 },
+  offerTakeBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.brand,
+    minWidth: 92,
+    alignItems: "center",
+  },
+  offerTakeBtnBest: { backgroundColor: colors.brand, borderColor: colors.brand },
+  offerTakeBtnText: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.brand },
+  offerTakeBtnTextBest: { color: colors.onBrandPrimary },
 });

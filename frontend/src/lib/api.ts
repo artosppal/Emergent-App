@@ -85,6 +85,10 @@ export const api = {
   upgrade: (tier: "monthly" | "yearly") =>
     apiFetch("/auth/upgrade", { method: "POST", body: JSON.stringify({ tier }) }),
   downgrade: () => apiFetch("/auth/downgrade", { method: "POST" }),
+  downgradeFeedback: (body: { reason: string; reason_other?: string | null }) =>
+    apiFetch("/auth/downgrade/feedback", { method: "POST", body: JSON.stringify(body) }),
+  retentionOffer: (offer: "3m" | "6m" | "12m") =>
+    apiFetch("/auth/downgrade/retention-offer", { method: "POST", body: JSON.stringify({ offer }) }),
   updateChannels: (body: { push: boolean; whatsapp: boolean }) =>
     apiFetch("/auth/channels", { method: "PUT", body: JSON.stringify(body) }),
   updatePhone: (phone: string) =>

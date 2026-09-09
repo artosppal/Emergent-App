@@ -90,6 +90,19 @@ MAYAR_TIER_MONTHLY_ID = os.environ.get("MAYAR_TIER_MONTHLY_ID", "")
 MAYAR_TIER_YEARLY_ID = os.environ.get("MAYAR_TIER_YEARLY_ID", "")
 MAYAR_BASE_URL = "https://api.mayar.id"
 
+# Retention offers shown to a user about to downgrade — same "build ahead of
+# KYC" pattern: each is its own discounted Mayar membership tier you create
+# once KYC is approved. Stay empty (and /auth/downgrade/retention-offer
+# returns a clear "not configured" error) until then.
+MAYAR_RETENTION_3M_ID = os.environ.get("MAYAR_RETENTION_3M_ID", "")
+MAYAR_RETENTION_6M_ID = os.environ.get("MAYAR_RETENTION_6M_ID", "")
+MAYAR_RETENTION_12M_ID = os.environ.get("MAYAR_RETENTION_12M_ID", "")
+RETENTION_TIER_IDS = {
+    "3m": MAYAR_RETENTION_3M_ID,
+    "6m": MAYAR_RETENTION_6M_ID,
+    "12m": MAYAR_RETENTION_12M_ID,
+}
+
 # Mayar does not sign/HMAC its webhook body (confirmed against their public
 # docs and a working third-party integration writeup — there is no header or
 # payload field to check). The documented workaround, and what real Mayar
@@ -346,6 +359,18 @@ class PhoneVerifyRequestBody(BaseModel):
 
 class PhoneVerifyConfirmBody(BaseModel):
     code: str
+
+
+DOWNGRADE_REASONS = {"too_expensive", "rarely_used", "missing_features", "switching_app", "just_trying", "other"}
+
+
+class DowngradeFeedbackBody(BaseModel):
+    reason: str
+    reason_other: Optional[str] = None
+
+
+class RetentionOfferBody(BaseModel):
+    offer: str  # "3m" | "6m" | "12m"
 
 
 class GoogleAuthBody(BaseModel):
@@ -874,6 +899,43 @@ async def mock_downgrade(user: dict = Depends(get_current_user)):
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"plan": "free"}})
     updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return {"user": public_user(updated)}
+
+
+@api_router.post("/auth/downgrade/feedback")
+async def downgrade_feedback(body: DowngradeFeedbackBody, user: dict = Depends(get_current_user)):
+    """Logged before the plan actually flips — the retention offer is shown
+    right after this, and `plan` only changes if the user declines it (via
+    /auth/downgrade) or completes a retention checkout (via the Mayar
+    webhook), never here."""
+    reason = body.reason if body.reason in DOWNGRADE_REASONS else "other"
+    await db.downgrade_feedback.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "email": user.get("email"),
+        "reason": reason,
+        "reason_other": body.reason_other if reason == "other" else None,
+        "created_at": now_utc().isoformat(),
+    })
+    return {"status": "ok"}
+
+
+@api_router.post("/auth/downgrade/retention-offer")
+async def downgrade_retention_offer(body: RetentionOfferBody, user: dict = Depends(get_current_user)):
+    tier_id = RETENTION_TIER_IDS.get(body.offer)
+    if tier_id is None:
+        raise HTTPException(status_code=422, detail='offer harus "3m", "6m", atau "12m"')
+    if not (MAYAR_API_KEY.strip() and MAYAR_PRODUCT_ID.strip() and tier_id.strip()):
+        raise HTTPException(
+            status_code=503,
+            detail="Penawaran ini belum aktif — masih menunggu verifikasi KYC Mayar selesai.",
+        )
+    checkout_link = await mayar_create_checkout(user, tier_id)
+    if not checkout_link:
+        raise HTTPException(
+            status_code=502,
+            detail="Mayar tidak mengembalikan link checkout. Cek log server untuk detail responsnya.",
+        )
+    return {"checkout_url": checkout_link}
 
 
 class ChannelsBody(BaseModel):
