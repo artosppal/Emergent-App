@@ -155,6 +155,11 @@ def verify_password(pw: str, hashed: str) -> bool:
         return False
 
 
+def check_not_deleted(user: dict):
+    if user.get("deleted_at"):
+        raise HTTPException(status_code=401, detail="Akun ini sudah dihapus. Hubungi admin kalau ini keliru.")
+
+
 def make_session_token(user_id: str) -> str:
     payload = {
         "user_id": user_id,
@@ -420,6 +425,7 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    check_not_deleted(user)
 
     # Throttled "last active" tracking for the admin panel — only write if
     # stale (>10 min) so this doesn't add a DB write to every single request.
@@ -559,6 +565,7 @@ async def login(body: LoginBody):
     user = await db.users.find_one({"email": body.email.lower()}, {"_id": 0})
     if not user or not user.get("password_hash") or not verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Email atau password salah")
+    check_not_deleted(user)
     token = make_session_token(user["user_id"])
     await persist_session(user["user_id"], token)
     return {"session_token": token, "user": public_user(user)}
@@ -591,6 +598,7 @@ async def login_whatsapp_verify(body: WhatsappLoginVerifyBody):
     user = await db.users.find_one({"phone": phone}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="Nomor WhatsApp belum terdaftar")
+    check_not_deleted(user)
     # They just proved live ownership of this number — self-heal the flag so
     # it stops blocking this account from WhatsApp login and Premium.
     if not user.get("phone_verified"):
@@ -642,6 +650,7 @@ async def google_session(body: GoogleAuthBody):
 
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing:
+        check_not_deleted(existing)
         user = existing
     else:
         user = {
@@ -1956,21 +1965,22 @@ async def enrich_users(docs: List[dict]) -> List[dict]:
             "premium_expires_at": d.get("premium_expires_at"),
             "last_active_at": d.get("last_active_at"),
             "subscription_count": count,
+            "deleted_at": d.get("deleted_at"),
         }
         for d, count in zip(docs, sub_counts)
     ]
 
 
 @api_router.get("/admin/users")
-async def admin_list_users(query: str = "", _: None = Depends(require_admin)):
+async def admin_list_users(query: str = "", trash: bool = False, _: None = Depends(require_admin)):
     q = query.strip()
-    filt: dict = {}
+    filt: dict = {"deleted_at": {"$ne": None}} if trash else {"deleted_at": None}
     if q:
         safe_q = re.escape(q)
-        filt = {"$or": [
+        filt["$or"] = [
             {"email": {"$regex": safe_q, "$options": "i"}},
             {"name": {"$regex": safe_q, "$options": "i"}},
-        ]}
+        ]
     docs = await db.users.find(filt, {"_id": 0}).sort("created_at", -1).to_list(50)
     return {"users": await enrich_users(docs)}
 
@@ -1996,6 +2006,112 @@ async def admin_set_plan(body: AdminSetPlanBody, _: None = Depends(require_admin
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
     logger.info(f"Admin set plan: user={body.user_id} -> {body.plan}")
+    return {"status": "ok"}
+
+
+class AdminCreateUserBody(BaseModel):
+    name: str
+    email: EmailStr
+    phone: Optional[str] = None
+    password: Optional[str] = None  # blank = a random one is generated
+    plan: str = "free"
+
+
+@api_router.post("/admin/create-user")
+async def admin_create_user(body: AdminCreateUserBody, _: None = Depends(require_admin)):
+    if not body.name.strip():
+        raise HTTPException(status_code=422, detail="Nama wajib diisi")
+    if body.plan not in ("free", "premium"):
+        raise HTTPException(status_code=422, detail='plan harus "free" atau "premium"')
+    email_norm = body.email.lower()
+    if await db.users.find_one({"email": email_norm}):
+        raise HTTPException(status_code=409, detail="Email sudah terdaftar")
+
+    phone_norm = None
+    if body.phone and body.phone.strip():
+        try:
+            phone_norm = normalize_phone(body.phone)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid. Pakai format 08xx atau +62xx")
+        if await db.users.find_one({"phone": phone_norm}):
+            raise HTTPException(status_code=409, detail="Nomor WhatsApp sudah dipakai akun lain")
+
+    temp_password = (body.password or "").strip() or secrets.token_urlsafe(9)
+    user = {
+        "user_id": new_user_id(),
+        "email": email_norm,
+        "name": body.name.strip(),
+        "password_hash": hash_password(temp_password),
+        "picture": None,
+        "plan": body.plan,
+        "phone": phone_norm,
+        "phone_verified": bool(phone_norm),
+        "email_verified": True,
+        "notify_channels": {"push": True, "whatsapp": bool(phone_norm)},
+        "created_at": now_utc().isoformat(),
+    }
+    if body.plan == "premium":
+        user["premium_since"] = now_utc().isoformat()
+        user["premium_expires_at"] = (now_utc() + timedelta(days=DEFAULT_PREMIUM_DAYS)).isoformat()
+    await db.users.insert_one(user)
+    logger.info(f"Admin created user: {email_norm}")
+    return {"user": public_user(user), "temp_password": temp_password}
+
+
+class AdminUserIdBody(BaseModel):
+    user_id: str
+
+
+class AdminConfirmEmailBody(BaseModel):
+    user_id: str
+    confirm_email: str
+
+
+@api_router.post("/admin/delete-user")
+async def admin_delete_user(body: AdminConfirmEmailBody, _: None = Depends(require_admin)):
+    """Soft delete only — moves the account to Sampah (trash). Nothing is
+    actually erased until /admin/purge-user, and it can be restored any
+    time before that. Requires typing the account's exact email back as a
+    deliberate guard against a misclick."""
+    user = await db.users.find_one({"user_id": body.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    if user.get("deleted_at"):
+        raise HTTPException(status_code=409, detail="Akun ini sudah ada di Sampah")
+    if body.confirm_email.strip().lower() != (user.get("email") or "").lower():
+        raise HTTPException(status_code=400, detail="Email konfirmasi tidak cocok")
+    await db.users.update_one({"user_id": body.user_id}, {"$set": {"deleted_at": now_utc().isoformat()}})
+    await db.user_sessions.delete_many({"user_id": body.user_id})
+    logger.info(f"Admin moved user to trash: {user.get('email')}")
+    return {"status": "ok"}
+
+
+@api_router.post("/admin/restore-user")
+async def admin_restore_user(body: AdminUserIdBody, _: None = Depends(require_admin)):
+    res = await db.users.update_one({"user_id": body.user_id}, {"$set": {"deleted_at": None}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    logger.info(f"Admin restored user: {body.user_id}")
+    return {"status": "ok"}
+
+
+@api_router.post("/admin/purge-user")
+async def admin_purge_user(body: AdminConfirmEmailBody, _: None = Depends(require_admin)):
+    """The actually-irreversible step — only allowed on an account that's
+    already in Sampah, and only with the exact email typed again."""
+    user = await db.users.find_one({"user_id": body.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    if not user.get("deleted_at"):
+        raise HTTPException(status_code=409, detail="Pindahkan ke Sampah dulu sebelum hapus permanen")
+    if body.confirm_email.strip().lower() != (user.get("email") or "").lower():
+        raise HTTPException(status_code=400, detail="Email konfirmasi tidak cocok")
+    uid = body.user_id
+    await db.users.delete_one({"user_id": uid})
+    await db.user_sessions.delete_many({"user_id": uid})
+    await db.subscriptions.delete_many({"user_id": uid})
+    await db.groups.update_many({"members.user_id": uid}, {"$pull": {"members": {"user_id": uid}}})
+    logger.warning(f"Admin permanently purged user: {user.get('email')} ({uid})")
     return {"status": "ok"}
 
 
@@ -2076,7 +2192,7 @@ async def admin_export_users(body: AdminExportBody, _: None = Depends(require_ad
     if body.user_ids:
         docs = await db.users.find({"user_id": {"$in": body.user_ids}}, {"_id": 0}).to_list(len(body.user_ids))
     else:
-        docs = await db.users.find({}, {"_id": 0}).sort("created_at", -1).to_list(10000)
+        docs = await db.users.find({"deleted_at": None}, {"_id": 0}).sort("created_at", -1).to_list(10000)
     users = await enrich_users(docs)
     xlsx_bytes = build_users_xlsx(users)
     filename = f"notifin-akun-{date.today().isoformat()}.xlsx"
@@ -2173,6 +2289,32 @@ ADMIN_PAGE_HTML = """<!doctype html>
   .btn-export:disabled { opacity: 0.5; cursor: default; }
   .btn-export-all { background: #059669; color: #fff; }
   .row-checkbox { width: auto; margin: 0; flex-shrink: 0; }
+  select {
+    width: 100%; padding: 12px 14px; border-radius: 12px; border: 1.5px solid #D1D5DB;
+    font-size: 15px; margin-bottom: 12px; background: #fff; outline: none;
+  }
+  select:focus { border-color: #059669; }
+  .tabs { display: flex; gap: 6px; margin: 4px 0 12px; }
+  .tab {
+    flex: 1; text-align: center; padding: 9px; border-radius: 10px; font-size: 13px;
+    font-weight: 700; cursor: pointer; background: #F3F4F6; color: #6B7280;
+  }
+  .tab.active { background: #059669; color: #fff; }
+  .btn-add { background: #059669; color: #fff; font-size: 13px; padding: 9px 14px; white-space: nowrap; }
+  .panel { background: #F7FAF8; border-radius: 14px; padding: 16px; margin-bottom: 14px; border: 1px solid #E5E7EB; }
+  .panel h2 { font-size: 15px; margin: 0 0 12px; }
+  .panel-actions { display: flex; gap: 8px; }
+  .btn-secondary { background: #E8F0EC; color: #182924; }
+  .result-banner {
+    background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 12px 14px;
+    font-size: 13px; color: #065F46; margin-bottom: 14px; line-height: 1.6;
+  }
+  .result-banner code { background: #fff; padding: 2px 6px; border-radius: 6px; font-weight: 700; }
+  .btn-danger { background: #FEE2E2; color: #B91C1C; }
+  .btn-restore { background: #D1FAE5; color: #065F46; }
+  .btn-purge { background: #EF4444; color: #fff; }
+  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .add-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -2190,9 +2332,39 @@ ADMIN_PAGE_HTML = """<!doctype html>
     <h1>Notifin Admin</h1>
     <button class="logout" onclick="logout()">Keluar</button>
   </div>
-  <p class="sub">Cari akun berdasarkan email atau nama, lalu ubah status Premium-nya.</p>
+  <p class="sub">Cari akun berdasarkan email atau nama, ubah status Premium, atau kelola akun.</p>
+
+  <div class="add-toolbar">
+    <button class="btn-add" onclick="toggleAddForm()">+ Tambah Akun</button>
+  </div>
+
+  <div class="panel" id="add-panel" style="display:none">
+    <h2>Tambah akun baru</h2>
+    <input id="new-name" type="text" placeholder="Nama" />
+    <input id="new-email" type="email" placeholder="Email" />
+    <input id="new-phone" type="text" placeholder="Nomor WhatsApp (opsional)" />
+    <input id="new-password" type="text" placeholder="Password (kosongkan untuk buat otomatis)" />
+    <select id="new-plan">
+      <option value="free">Free</option>
+      <option value="premium">Premium</option>
+    </select>
+    <div class="error" id="add-error"></div>
+    <div class="panel-actions">
+      <button class="btn-primary" id="add-submit-btn" onclick="submitAddUser()" style="width:auto;flex:1">Buat Akun</button>
+      <button class="btn-secondary" onclick="toggleAddForm()" style="border:none;border-radius:999px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer">Batal</button>
+    </div>
+  </div>
+
+  <div class="result-banner" id="result-banner" style="display:none"></div>
+
   <input id="search" type="text" placeholder="Cari email atau nama..." oninput="onSearchInput()" />
   <div class="error" id="app-error"></div>
+
+  <div class="tabs">
+    <div class="tab active" id="tab-active" onclick="switchTab(false)">Aktif</div>
+    <div class="tab" id="tab-trash" onclick="switchTab(true)">Sampah</div>
+  </div>
+
   <div class="toolbar">
     <label class="select-all">
       <input type="checkbox" id="select-all-checkbox" onchange="onSelectAll(this.checked)" />
@@ -2213,6 +2385,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
   let searchTimer = null;
   let selected = new Set();
   let currentUsers = [];
+  let showTrash = false;
 
   async function login() {
     const password = document.getElementById('password').value;
@@ -2256,9 +2429,10 @@ ADMIN_PAGE_HTML = """<!doctype html>
     const errEl = document.getElementById('app-error');
     errEl.textContent = '';
     try {
-      const res = await fetch('/api/admin/users?query=' + encodeURIComponent(query), {
-        headers: { Authorization: 'Bearer ' + token },
-      });
+      const res = await fetch(
+        '/api/admin/users?query=' + encodeURIComponent(query) + '&trash=' + showTrash,
+        { headers: { Authorization: 'Bearer ' + token } },
+      );
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 401) { logout(); return; }
@@ -2268,6 +2442,142 @@ ADMIN_PAGE_HTML = """<!doctype html>
       renderList(data.users);
     } catch (e) {
       errEl.textContent = 'Tidak bisa menghubungi server.';
+    }
+  }
+
+  function switchTab(trash) {
+    if (showTrash === trash) return;
+    showTrash = trash;
+    selected.clear();
+    document.getElementById('tab-active').classList.toggle('active', !trash);
+    document.getElementById('tab-trash').classList.toggle('active', trash);
+    document.getElementById('result-banner').style.display = 'none';
+    loadUsers(document.getElementById('search').value);
+  }
+
+  function toggleAddForm() {
+    const panel = document.getElementById('add-panel');
+    const opening = panel.style.display === 'none';
+    panel.style.display = opening ? 'block' : 'none';
+    document.getElementById('add-error').textContent = '';
+    if (opening) {
+      ['new-name', 'new-email', 'new-phone', 'new-password'].forEach((id) => {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('new-plan').value = 'free';
+    }
+  }
+
+  async function submitAddUser() {
+    const name = document.getElementById('new-name').value.trim();
+    const email = document.getElementById('new-email').value.trim();
+    const phone = document.getElementById('new-phone').value.trim();
+    const password = document.getElementById('new-password').value.trim();
+    const plan = document.getElementById('new-plan').value;
+    const errEl = document.getElementById('add-error');
+    const btn = document.getElementById('add-submit-btn');
+    errEl.textContent = '';
+    if (!name || !email) { errEl.textContent = 'Nama dan email wajib diisi'; return; }
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ name, email, phone: phone || null, password: password || null, plan }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        errEl.textContent = data.detail || 'Gagal membuat akun';
+        return;
+      }
+      toggleAddForm();
+      if (showTrash) {
+        showTrash = false;
+        document.getElementById('tab-active').classList.add('active');
+        document.getElementById('tab-trash').classList.remove('active');
+      }
+      loadUsers(document.getElementById('search').value);
+      const banner = document.getElementById('result-banner');
+      banner.style.display = 'block';
+      banner.innerHTML =
+        'Akun <code>' + escapeHtml(email) + '</code> dibuat. Password: <code>' +
+        escapeHtml(data.temp_password) + '</code> — catat/salin sekarang, tidak ditampilkan lagi.';
+    } catch (e) {
+      errEl.textContent = 'Tidak bisa menghubungi server.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function deleteUser(uid, email) {
+    const typed = prompt('Ketik ulang email "' + email + '" untuk pindahkan akun ini ke Sampah:');
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== email.toLowerCase()) {
+      alert('Email tidak cocok. Akun tidak jadi dihapus.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ user_id: uid, confirm_email: typed.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        document.getElementById('app-error').textContent = data.detail || 'Gagal menghapus akun';
+        return;
+      }
+      loadUsers(document.getElementById('search').value);
+    } catch (e) {
+      document.getElementById('app-error').textContent = 'Tidak bisa menghubungi server.';
+    }
+  }
+
+  async function restoreUser(uid) {
+    try {
+      const res = await fetch('/api/admin/restore-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ user_id: uid }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        document.getElementById('app-error').textContent = data.detail || 'Gagal memulihkan akun';
+        return;
+      }
+      loadUsers(document.getElementById('search').value);
+    } catch (e) {
+      document.getElementById('app-error').textContent = 'Tidak bisa menghubungi server.';
+    }
+  }
+
+  async function purgeUser(uid, email) {
+    const typed = prompt(
+      'Ini PERMANEN dan tidak bisa dibatalkan. Ketik ulang email "' + email + '" untuk hapus akun ini selamanya:',
+    );
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== email.toLowerCase()) {
+      alert('Email tidak cocok. Akun tidak jadi dihapus.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/purge-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ user_id: uid, confirm_email: typed.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        document.getElementById('app-error').textContent = data.detail || 'Gagal menghapus akun';
+        return;
+      }
+      loadUsers(document.getElementById('search').value);
+    } catch (e) {
+      document.getElementById('app-error').textContent = 'Tidak bisa menghubungi server.';
     }
   }
 
@@ -2384,7 +2694,24 @@ ADMIN_PAGE_HTML = """<!doctype html>
       meta += chip('WA', u.phone ? '+' + u.phone : '-');
       meta += chip('Langganan', u.subscription_count);
       meta += chip('Aktif', lastActiveText(u.last_active_at));
+      if (showTrash) meta += chip('Dihapus', fmtDate(u.deleted_at), 'chip-danger');
       const checked = selected.has(u.user_id) ? 'checked' : '';
+      const uidAttr = 'data-uid="' + u.user_id + '"';
+      const emailAttr = 'data-email="' + escapeHtml(u.email || '').replace(/"/g, '&quot;') + '"';
+      const getUid = 'this.getAttribute(&quot;data-uid&quot;)';
+      const getEmail = 'this.getAttribute(&quot;data-email&quot;)';
+
+      const actions = showTrash
+        ? (
+            '<button class="btn-restore" ' + uidAttr + ' onclick="restoreUser(' + getUid + ')">Pulihkan</button>' +
+            '<button class="btn-purge" ' + uidAttr + ' ' + emailAttr + ' onclick="purgeUser(' + getUid + ',' + getEmail + ')">Hapus Permanen</button>'
+          )
+        : (
+            '<button class="btn-toggle" data-uid="' + u.user_id + '" data-plan="' + (isPremium ? 'free' : 'premium') + '" onclick="togglePlan(this)">' +
+              (isPremium ? 'Jadikan Free' : 'Jadikan Premium') +
+            '</button>' +
+            '<button class="btn-danger" ' + uidAttr + ' ' + emailAttr + ' onclick="deleteUser(' + getUid + ',' + getEmail + ')">Hapus</button>'
+          );
 
       return (
         '<div class="row">' +
@@ -2397,11 +2724,9 @@ ADMIN_PAGE_HTML = """<!doctype html>
             '<span class="pill ' + (isPremium ? 'pill-premium' : 'pill-free') + '">' +
               (isPremium ? 'Premium' : 'Free') +
             '</span>' +
-            '<button class="btn-toggle" data-uid="' + u.user_id + '" data-plan="' + (isPremium ? 'free' : 'premium') + '" onclick="togglePlan(this)">' +
-              (isPremium ? 'Jadikan Free' : 'Jadikan Premium') +
-            '</button>' +
           '</div>' +
           '<div class="row-meta">' + meta + '</div>' +
+          '<div class="row-actions">' + actions + '</div>' +
         '</div>'
       );
     }).join('');
