@@ -19,6 +19,7 @@ export interface User {
   picture?: string | null;
   plan: "free" | "premium";
   phone?: string | null;
+  phone_verified?: boolean;
   wa_live?: boolean;
   notify_channels: { push: boolean; whatsapp: boolean };
   monthly_limit?: number | null;
@@ -28,7 +29,16 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
+  registerStart: (email: string, password: string, name: string) => Promise<void>;
+  registerVerify: (email: string, code: string) => Promise<void>;
+  registerResend: (email: string) => Promise<void>;
+  registerWhatsappStart: (name: string, email: string, phone: string) => Promise<string>;
+  registerWhatsappVerify: (phone: string, code: string) => Promise<void>;
+  registerWhatsappResend: (phone: string) => Promise<void>;
+  loginWhatsappRequest: (phone: string) => Promise<string>;
+  loginWhatsappVerify: (phone: string, code: string) => Promise<void>;
+  verifyPhoneRequest: (phone: string) => Promise<string>;
+  verifyPhoneConfirm: (code: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -104,10 +114,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applyUser],
   );
 
-  const register = useCallback(
-    async (email: string, password: string, name: string) => {
-      const res: any = await api.register({ email, password, name });
+  const registerStart = useCallback(async (email: string, password: string, name: string) => {
+    await api.registerStart({ email, password, name });
+  }, []);
+
+  const registerVerify = useCallback(
+    async (email: string, code: string) => {
+      const res: any = await api.registerVerify({ email, code });
       await setToken(res.session_token);
+      applyUser(res.user);
+    },
+    [applyUser],
+  );
+
+  const registerResend = useCallback(async (email: string) => {
+    await api.registerResend(email);
+  }, []);
+
+  const registerWhatsappStart = useCallback(async (name: string, email: string, phone: string) => {
+    const res: any = await api.registerWhatsappStart({ name, email, phone });
+    return res.phone as string;
+  }, []);
+
+  const registerWhatsappVerify = useCallback(
+    async (phone: string, code: string) => {
+      const res: any = await api.registerWhatsappVerify({ phone, code });
+      await setToken(res.session_token);
+      applyUser(res.user);
+    },
+    [applyUser],
+  );
+
+  const registerWhatsappResend = useCallback(async (phone: string) => {
+    await api.registerWhatsappResend(phone);
+  }, []);
+
+  const loginWhatsappRequest = useCallback(async (phone: string) => {
+    const res: any = await api.loginWhatsappRequest(phone);
+    return res.phone as string;
+  }, []);
+
+  const loginWhatsappVerify = useCallback(
+    async (phone: string, code: string) => {
+      const res: any = await api.loginWhatsappVerify({ phone, code });
+      await setToken(res.session_token);
+      applyUser(res.user);
+    },
+    [applyUser],
+  );
+
+  const verifyPhoneRequest = useCallback(async (phone: string) => {
+    const res: any = await api.phoneVerifyRequest(phone);
+    return res.phone as string;
+  }, []);
+
+  const verifyPhoneConfirm = useCallback(
+    async (code: string) => {
+      const res: any = await api.phoneVerifyConfirm(code);
       applyUser(res.user);
     },
     [applyUser],
@@ -150,7 +213,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         loading,
         login,
-        register,
+        registerStart,
+        registerVerify,
+        registerResend,
+        registerWhatsappStart,
+        registerWhatsappVerify,
+        registerWhatsappResend,
+        loginWhatsappRequest,
+        loginWhatsappVerify,
+        verifyPhoneRequest,
+        verifyPhoneConfirm,
         loginWithGoogle,
         logout,
         refresh,

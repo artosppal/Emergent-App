@@ -14,6 +14,11 @@ import re
 import bcrypt
 import jwt
 import httpx
+import hashlib
+import random
+import smtplib
+import ssl
+from email.mime.text import MIMEText
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
@@ -59,6 +64,20 @@ FONNTE_BASE_URL = "https://api.fonnte.com"
 
 def wa_live() -> bool:
     return bool(FONNTE_TOKEN.strip())
+
+
+# Email OTP (plain SMTP — works with Gmail's own SMTP + an App Password, or
+# any other SMTP provider). Simulates (logs the email instead of sending)
+# while unconfigured, same pattern as WhatsApp above.
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587") or 587)
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", SMTP_USER)
+
+
+def email_live() -> bool:
+    return bool(SMTP_HOST.strip() and SMTP_USER.strip() and SMTP_PASSWORD.strip())
 
 
 # Payment via Mayar.id (membership product "Notifin Premium").
@@ -149,6 +168,7 @@ def public_user(u: dict) -> dict:
         "picture": u.get("picture"),
         "plan": u.get("plan", "free"),
         "phone": u.get("phone"),
+        "phone_verified": bool(u.get("phone_verified")),
         "wa_live": wa_live(),
         "notify_channels": u.get("notify_channels", {"push": True, "whatsapp": False}),
         "monthly_limit": u.get("monthly_limit"),
@@ -168,6 +188,111 @@ def fmt_rp(v: float) -> str:
     return "Rp" + f"{round(v or 0):,}".replace(",", ".")
 
 
+def _send_email_sync(to: str, subject: str, body: str):
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = EMAIL_FROM
+    msg["To"] = to
+    context = ssl.create_default_context()
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls(context=context)
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(EMAIL_FROM, [to], msg.as_string())
+
+
+async def send_email(to: str, subject: str, body: str) -> bool:
+    if not email_live():
+        logger.info(f"[EMAIL SIMULASI] -> {to}: {subject}\n{body}")
+        return True
+    try:
+        await asyncio.to_thread(_send_email_sync, to, subject, body)
+        return True
+    except Exception as e:
+        logger.warning(f"Email send failed: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# OTP codes — shared by email-verified registration, WhatsApp-only
+# registration, WhatsApp login, and phone verification before Premium.
+# One collection keyed by (purpose, key); `payload` carries whatever pending
+# data (name/password hash/phone/email) needs to survive until the code is
+# confirmed, since nothing is written to `users` until then.
+# ---------------------------------------------------------------------------
+OTP_TTL_MINUTES = 10
+OTP_MAX_ATTEMPTS = 5
+OTP_RESEND_COOLDOWN_SECONDS = 45
+
+
+def gen_otp_code() -> str:
+    return f"{random.randint(0, 999999):06d}"
+
+
+def hash_otp(code: str) -> str:
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+async def create_otp(purpose: str, key: str, payload: Optional[dict] = None) -> str:
+    existing = await db.otp_codes.find_one({"purpose": purpose, "key": key})
+    if existing:
+        last_created = datetime.fromisoformat(existing["created_at"])
+        if last_created.tzinfo is None:
+            last_created = last_created.replace(tzinfo=timezone.utc)
+        wait_left = OTP_RESEND_COOLDOWN_SECONDS - (now_utc() - last_created).total_seconds()
+        if wait_left > 0:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Tunggu {int(wait_left) + 1} detik sebelum minta kode baru",
+            )
+    code = gen_otp_code()
+    await db.otp_codes.update_one(
+        {"purpose": purpose, "key": key},
+        {"$set": {
+            "code_hash": hash_otp(code),
+            "payload": payload or {},
+            "attempts": 0,
+            "expires_at": (now_utc() + timedelta(minutes=OTP_TTL_MINUTES)).isoformat(),
+            "created_at": now_utc().isoformat(),
+        }},
+        upsert=True,
+    )
+    return code
+
+
+async def check_otp(purpose: str, key: str, code: str) -> dict:
+    doc = await db.otp_codes.find_one({"purpose": purpose, "key": key})
+    if not doc:
+        raise HTTPException(status_code=400, detail="Kode tidak ditemukan, minta kode baru")
+    expires_at = datetime.fromisoformat(doc["expires_at"])
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now_utc():
+        await db.otp_codes.delete_one({"_id": doc["_id"]})
+        raise HTTPException(status_code=400, detail="Kode sudah kedaluwarsa, minta kode baru")
+    if doc.get("attempts", 0) >= OTP_MAX_ATTEMPTS:
+        await db.otp_codes.delete_one({"_id": doc["_id"]})
+        raise HTTPException(status_code=400, detail="Terlalu banyak percobaan salah, minta kode baru")
+    if hash_otp(code) != doc["code_hash"]:
+        await db.otp_codes.update_one({"_id": doc["_id"]}, {"$inc": {"attempts": 1}})
+        raise HTTPException(status_code=400, detail="Kode salah")
+    await db.otp_codes.delete_one({"_id": doc["_id"]})
+    return doc.get("payload", {}) or {}
+
+
+def otp_email_body(code: str) -> str:
+    return (
+        f"Kode verifikasi Notifin kamu: {code}\n\n"
+        "Kode ini berlaku 10 menit. Jangan bagikan kode ini ke siapa pun."
+    )
+
+
+def otp_wa_message(code: str) -> str:
+    return (
+        f"Kode verifikasi Notifin kamu: *{code}*\n\n"
+        "Berlaku 10 menit. Jangan bagikan kode ini ke siapa pun."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -180,6 +305,47 @@ class RegisterBody(BaseModel):
 class LoginBody(BaseModel):
     email: EmailStr
     password: str
+
+
+class VerifyEmailBody(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class ResendEmailOtpBody(BaseModel):
+    email: EmailStr
+
+
+class RegisterWhatsappBody(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+
+
+class VerifyWhatsappRegisterBody(BaseModel):
+    phone: str
+    code: str
+
+
+class ResendWhatsappOtpBody(BaseModel):
+    phone: str
+
+
+class WhatsappLoginRequestBody(BaseModel):
+    phone: str
+
+
+class WhatsappLoginVerifyBody(BaseModel):
+    phone: str
+    code: str
+
+
+class PhoneVerifyRequestBody(BaseModel):
+    phone: str
+
+
+class PhoneVerifyConfirmBody(BaseModel):
+    code: str
 
 
 class GoogleAuthBody(BaseModel):
@@ -252,16 +418,36 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 # ---------------------------------------------------------------------------
 @api_router.post("/auth/register")
 async def register(body: RegisterBody):
+    """Step 1 of manual registration — doesn't create the account yet. Sends
+    a 6-digit code to the email and stashes the pending signup data until
+    /auth/register/verify confirms it, so no unverified account ever lands
+    in `users`."""
+    existing = await db.users.find_one({"email": body.email.lower()})
+    if existing:
+        raise HTTPException(status_code=409, detail="Email sudah terdaftar")
+    code = await create_otp(
+        "register_email",
+        body.email.lower(),
+        {"name": body.name, "email": body.email.lower(), "password_hash": hash_password(body.password)},
+    )
+    await send_email(body.email.lower(), "Kode verifikasi Notifin", otp_email_body(code))
+    return {"pending": True, "email": body.email.lower()}
+
+
+@api_router.post("/auth/register/verify")
+async def register_verify(body: VerifyEmailBody):
+    payload = await check_otp("register_email", body.email.lower(), body.code.strip())
     existing = await db.users.find_one({"email": body.email.lower()})
     if existing:
         raise HTTPException(status_code=409, detail="Email sudah terdaftar")
     user = {
         "user_id": new_user_id(),
-        "email": body.email.lower(),
-        "name": body.name,
-        "password_hash": hash_password(body.password),
+        "email": payload["email"],
+        "name": payload["name"],
+        "password_hash": payload["password_hash"],
         "picture": None,
         "plan": "free",
+        "email_verified": True,
         "notify_channels": {"push": True, "whatsapp": False},
         "created_at": now_utc().isoformat(),
     }
@@ -271,11 +457,112 @@ async def register(body: RegisterBody):
     return {"session_token": token, "user": public_user(user)}
 
 
+@api_router.post("/auth/register/resend")
+async def register_resend(body: ResendEmailOtpBody):
+    existing_otp = await db.otp_codes.find_one({"purpose": "register_email", "key": body.email.lower()})
+    if not existing_otp:
+        raise HTTPException(status_code=404, detail="Belum ada pendaftaran yang menunggu verifikasi")
+    code = await create_otp("register_email", body.email.lower(), existing_otp.get("payload"))
+    await send_email(body.email.lower(), "Kode verifikasi Notifin", otp_email_body(code))
+    return {"pending": True, "email": body.email.lower()}
+
+
+@api_router.post("/auth/register/whatsapp")
+async def register_whatsapp(body: RegisterWhatsappBody):
+    """Alternative signup: name + email + WhatsApp number, no password — the
+    WhatsApp OTP itself is the proof of ownership. Same pending-until-verified
+    pattern as email registration."""
+    email_norm = body.email.lower()
+    if await db.users.find_one({"email": email_norm}):
+        raise HTTPException(status_code=409, detail="Email sudah terdaftar")
+    try:
+        phone = normalize_phone(body.phone)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid. Pakai format 08xx atau +62xx")
+    if await db.users.find_one({"phone": phone}):
+        raise HTTPException(status_code=409, detail="Nomor WhatsApp sudah terdaftar")
+    code = await create_otp("register_whatsapp", phone, {"name": body.name, "email": email_norm, "phone": phone})
+    await send_whatsapp(phone, otp_wa_message(code))
+    return {"pending": True, "phone": phone}
+
+
+@api_router.post("/auth/register/whatsapp/verify")
+async def register_whatsapp_verify(body: VerifyWhatsappRegisterBody):
+    try:
+        phone = normalize_phone(body.phone)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid")
+    payload = await check_otp("register_whatsapp", phone, body.code.strip())
+    if await db.users.find_one({"email": payload["email"]}):
+        raise HTTPException(status_code=409, detail="Email sudah terdaftar")
+    if await db.users.find_one({"phone": phone}):
+        raise HTTPException(status_code=409, detail="Nomor WhatsApp sudah terdaftar")
+    user = {
+        "user_id": new_user_id(),
+        "email": payload["email"],
+        "name": payload["name"],
+        "password_hash": None,
+        "picture": None,
+        "plan": "free",
+        "phone": phone,
+        "phone_verified": True,
+        "notify_channels": {"push": True, "whatsapp": True},
+        "created_at": now_utc().isoformat(),
+    }
+    await db.users.insert_one(user)
+    token = make_session_token(user["user_id"])
+    await persist_session(user["user_id"], token)
+    return {"session_token": token, "user": public_user(user)}
+
+
+@api_router.post("/auth/register/whatsapp/resend")
+async def register_whatsapp_resend(body: ResendWhatsappOtpBody):
+    try:
+        phone = normalize_phone(body.phone)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid")
+    existing_otp = await db.otp_codes.find_one({"purpose": "register_whatsapp", "key": phone})
+    if not existing_otp:
+        raise HTTPException(status_code=404, detail="Belum ada pendaftaran yang menunggu verifikasi")
+    code = await create_otp("register_whatsapp", phone, existing_otp.get("payload"))
+    await send_whatsapp(phone, otp_wa_message(code))
+    return {"pending": True, "phone": phone}
+
+
 @api_router.post("/auth/login")
 async def login(body: LoginBody):
     user = await db.users.find_one({"email": body.email.lower()}, {"_id": 0})
     if not user or not user.get("password_hash") or not verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Email atau password salah")
+    token = make_session_token(user["user_id"])
+    await persist_session(user["user_id"], token)
+    return {"session_token": token, "user": public_user(user)}
+
+
+@api_router.post("/auth/login/whatsapp/request")
+async def login_whatsapp_request(body: WhatsappLoginRequestBody):
+    try:
+        phone = normalize_phone(body.phone)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid")
+    user = await db.users.find_one({"phone": phone, "phone_verified": True})
+    if not user:
+        raise HTTPException(status_code=404, detail="Nomor WhatsApp belum terdaftar")
+    code = await create_otp("login_whatsapp", phone)
+    await send_whatsapp(phone, otp_wa_message(code))
+    return {"pending": True, "phone": phone}
+
+
+@api_router.post("/auth/login/whatsapp/verify")
+async def login_whatsapp_verify(body: WhatsappLoginVerifyBody):
+    try:
+        phone = normalize_phone(body.phone)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid")
+    await check_otp("login_whatsapp", phone, body.code.strip())
+    user = await db.users.find_one({"phone": phone, "phone_verified": True}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Nomor WhatsApp belum terdaftar")
     token = make_session_token(user["user_id"])
     await persist_session(user["user_id"], token)
     return {"session_token": token, "user": public_user(user)}
@@ -363,6 +650,14 @@ async def upgrade(body: UpgradeBody, user: dict = Depends(get_current_user)):
     only becomes "premium" once /webhooks/mayar confirms the payment."""
     if body.tier not in ("monthly", "yearly"):
         raise HTTPException(status_code=422, detail='tier harus "monthly" atau "yearly"')
+    if not user.get("phone_verified"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "phone_not_verified",
+                "message": "Verifikasi nomor WhatsApp dulu sebelum upgrade ke Premium.",
+            },
+        )
     if not mayar_live():
         raise HTTPException(
             status_code=503,
@@ -609,7 +904,43 @@ async def update_phone(body: PhoneBody, user: dict = Depends(get_current_user)):
         except ValueError:
             raise HTTPException(status_code=422,
                                 detail="Nomor WhatsApp tidak valid. Pakai format 08xx atau +62xx")
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"phone": normalized}})
+    # Changing the number invalidates any previous verification — a stale
+    # `phone_verified: true` on a brand new number would let it slip past
+    # the Premium gate below without ever proving ownership of it.
+    changed = normalized != user.get("phone")
+    update = {"phone": normalized}
+    if changed:
+        update["phone_verified"] = False
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
+    updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return {"user": public_user(updated)}
+
+
+@api_router.post("/auth/phone/verify/request")
+async def phone_verify_request(body: PhoneVerifyRequestBody, user: dict = Depends(get_current_user)):
+    try:
+        phone = normalize_phone(body.phone)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid. Pakai format 08xx atau +62xx")
+    other = await db.users.find_one({"phone": phone, "user_id": {"$ne": user["user_id"]}})
+    if other:
+        raise HTTPException(status_code=409, detail="Nomor WhatsApp sudah dipakai akun lain")
+    code = await create_otp("verify_phone", user["user_id"], {"phone": phone})
+    await send_whatsapp(phone, otp_wa_message(code))
+    return {"pending": True, "phone": phone}
+
+
+@api_router.post("/auth/phone/verify/confirm")
+async def phone_verify_confirm(body: PhoneVerifyConfirmBody, user: dict = Depends(get_current_user)):
+    payload = await check_otp("verify_phone", user["user_id"], body.code.strip())
+    phone = payload["phone"]
+    other = await db.users.find_one({"phone": phone, "user_id": {"$ne": user["user_id"]}})
+    if other:
+        raise HTTPException(status_code=409, detail="Nomor WhatsApp sudah dipakai akun lain")
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"phone": phone, "phone_verified": True, "notify_channels.whatsapp": True}},
+    )
     updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return {"user": public_user(updated)}
 

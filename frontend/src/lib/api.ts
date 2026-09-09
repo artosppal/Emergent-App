@@ -57,10 +57,27 @@ export async function apiFetch<T = any>(
 }
 
 export const api = {
-  register: (body: { email: string; password: string; name: string }) =>
+  registerStart: (body: { email: string; password: string; name: string }) =>
     apiFetch("/auth/register", { method: "POST", body: JSON.stringify(body) }),
+  registerVerify: (body: { email: string; code: string }) =>
+    apiFetch("/auth/register/verify", { method: "POST", body: JSON.stringify(body) }),
+  registerResend: (email: string) =>
+    apiFetch("/auth/register/resend", { method: "POST", body: JSON.stringify({ email }) }),
+
+  registerWhatsappStart: (body: { name: string; email: string; phone: string }) =>
+    apiFetch("/auth/register/whatsapp", { method: "POST", body: JSON.stringify(body) }),
+  registerWhatsappVerify: (body: { phone: string; code: string }) =>
+    apiFetch("/auth/register/whatsapp/verify", { method: "POST", body: JSON.stringify(body) }),
+  registerWhatsappResend: (phone: string) =>
+    apiFetch("/auth/register/whatsapp/resend", { method: "POST", body: JSON.stringify({ phone }) }),
+
   login: (body: { email: string; password: string }) =>
     apiFetch("/auth/login", { method: "POST", body: JSON.stringify(body) }),
+  loginWhatsappRequest: (phone: string) =>
+    apiFetch("/auth/login/whatsapp/request", { method: "POST", body: JSON.stringify({ phone }) }),
+  loginWhatsappVerify: (body: { phone: string; code: string }) =>
+    apiFetch("/auth/login/whatsapp/verify", { method: "POST", body: JSON.stringify(body) }),
+
   googleSession: (body: { code: string; redirect_uri: string; code_verifier?: string | null }) =>
     apiFetch("/auth/session", { method: "POST", body: JSON.stringify(body) }),
   me: () => apiFetch("/auth/me"),
@@ -72,6 +89,10 @@ export const api = {
     apiFetch("/auth/channels", { method: "PUT", body: JSON.stringify(body) }),
   updatePhone: (phone: string) =>
     apiFetch("/auth/phone", { method: "PUT", body: JSON.stringify({ phone }) }),
+  phoneVerifyRequest: (phone: string) =>
+    apiFetch("/auth/phone/verify/request", { method: "POST", body: JSON.stringify({ phone }) }),
+  phoneVerifyConfirm: (code: string) =>
+    apiFetch("/auth/phone/verify/confirm", { method: "POST", body: JSON.stringify({ code }) }),
   updateLimit: (monthly_limit: number | null) =>
     apiFetch("/auth/limit", { method: "PUT", body: JSON.stringify({ monthly_limit }) }),
 
