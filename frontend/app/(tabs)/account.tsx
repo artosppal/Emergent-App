@@ -554,7 +554,7 @@ export default function Account() {
                       )}
                       <View style={{ flex: 1 }}>
                         <Text style={styles.offerLabel}>{o.label}</Text>
-                        <View style={{ flexDirection: "row", alignItems: "baseline", gap: spacing.xs }}>
+                        <View style={{ flexDirection: "row", alignItems: "baseline", gap: spacing.sm }}>
                           <Text style={styles.offerPrice}>{formatRupiah(o.price)}</Text>
                           <Text style={styles.offerWas}>{formatRupiah(o.was)}</Text>
                         </View>
@@ -795,9 +795,9 @@ const styles = StyleSheet.create({
   offerLabel: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
   offerPrice: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: colors.brandDark, marginTop: 2 },
   offerWas: {
-    fontFamily: font.medium,
-    fontSize: fontSize.sm,
-    color: colors.muted,
+    fontFamily: font.semibold,
+    fontSize: fontSize.base,
+    color: colors.error,
     textDecorationLine: "line-through",
   },
   offerSave: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.brand, marginTop: 2 },
