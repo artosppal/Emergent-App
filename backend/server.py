@@ -56,6 +56,8 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 FREE_PLAN_LIMIT = 3
+FREE_WA_NOTIF_LIMIT = 5  # WhatsApp reminders per calendar month on the Free plan; Premium is unlimited.
+APP_URL = "https://notifin.online"  # appended to outgoing reminder/invite WhatsApp messages for easy access
 
 # WhatsApp via Fonnte (simulation mode while token is empty)
 FONNTE_TOKEN = os.environ.get("FONNTE_TOKEN", "")
@@ -179,17 +181,25 @@ async def persist_session(user_id: str, token: str):
 
 
 def public_user(u: dict) -> dict:
+    plan = u.get("plan", "free")
+    month = now_utc().strftime("%Y-%m")
+    wa_used = u.get("wa_notif_count", 0) if u.get("wa_notif_month") == month else 0
     return {
         "user_id": u["user_id"],
         "email": u.get("email"),
         "name": u.get("name"),
         "picture": u.get("picture"),
-        "plan": u.get("plan", "free"),
+        "plan": plan,
         "phone": u.get("phone"),
         "phone_verified": bool(u.get("phone_verified")),
         "wa_live": wa_live(),
         "notify_channels": u.get("notify_channels", {"push": True, "whatsapp": False}),
         "monthly_limit": u.get("monthly_limit"),
+        "premium_since": u.get("premium_since"),
+        "premium_expires_at": u.get("premium_expires_at"),
+        "cancel_at_period_end": bool(u.get("cancel_at_period_end")),
+        "wa_notif_used": wa_used,
+        "wa_notif_limit": None if plan == "premium" else FREE_WA_NOTIF_LIMIT,
     }
 
 
@@ -912,8 +922,14 @@ async def test_simulate_mayar_webhook(
 
 
 @api_router.post("/auth/downgrade")
-async def mock_downgrade(user: dict = Depends(get_current_user)):
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"plan": "free"}})
+async def cancel_subscription(user: dict = Depends(get_current_user)):
+    """Cancels the subscription without cutting Premium off immediately —
+    access stays on until `premium_expires_at`, same as most subscription
+    products. The actual flip to Free happens in expire_premiums_sweep()
+    once that date passes. A Free-plan account calling this is a no-op."""
+    if user.get("plan") == "premium":
+        await db.users.update_one(
+            {"user_id": user["user_id"]}, {"$set": {"cancel_at_period_end": True}})
     updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return {"user": public_user(updated)}
 
@@ -1176,6 +1192,19 @@ async def delete_subscription(sub_id: str, user: dict = Depends(get_current_user
 
 
 # ---------------------------------------------------------------------------
+# Promo recommendations — a Premium-only perk shown as a locked card on the
+# dashboard. Content is entirely admin-curated (see /admin/promos below); the
+# app never invents or guesses at real promotions from other services.
+# ---------------------------------------------------------------------------
+@api_router.get("/promos")
+async def list_promos(user: dict = Depends(get_current_user)):
+    if user.get("plan") != "premium":
+        raise HTTPException(status_code=403, detail="Fitur ini khusus akun Premium")
+    docs = await db.promo_recommendations.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return {"promos": docs}
+
+
+# ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
 @api_router.get("/dashboard")
@@ -1434,11 +1463,19 @@ async def list_groups(user: dict = Depends(get_current_user)):
             {"group_id": g["id"], "deleted_at": None}, {"_id": 0}).to_list(200)
         my_share = 0.0
         total_price = 0.0
+        paid_count = 0
+        unpaid_count = 0
         for s in subs:
             total_price += float(s.get("price", 0) or 0)
             for sp in compute_splits(s, g.get("members", [])):
                 if sp["user_id"] == user["user_id"]:
                     my_share += sp["amount"]
+                if sp["amount"] <= 0:
+                    continue
+                if sp["paid"]:
+                    paid_count += 1
+                else:
+                    unpaid_count += 1
         out.append({
             "id": g["id"],
             "name": g["name"],
@@ -1448,6 +1485,8 @@ async def list_groups(user: dict = Depends(get_current_user)):
             "sub_count": len(subs),
             "my_share": round(my_share),
             "total_price": round(total_price),
+            "paid_count": paid_count,
+            "unpaid_count": unpaid_count,
         })
     return {"groups": out}
 
@@ -1649,13 +1688,30 @@ async def claim_notif(key: str) -> bool:
         return False
 
 
+async def consume_wa_quota(user: dict) -> bool:
+    """Premium is unlimited. Free gets FREE_WA_NOTIF_LIMIT WhatsApp reminders
+    per calendar month — returns False (and sends nothing) once used up."""
+    if user.get("plan") == "premium":
+        return True
+    month = now_utc().strftime("%Y-%m")
+    count = user.get("wa_notif_count", 0) if user.get("wa_notif_month") == month else 0
+    if count >= FREE_WA_NOTIF_LIMIT:
+        return False
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"wa_notif_month": month, "wa_notif_count": count + 1}},
+    )
+    return True
+
+
 async def reminder_sweep():
     today = date.today()
 
-    # Personal subscriptions -> WhatsApp for premium users with WA enabled + phone.
+    # Personal subscriptions -> WhatsApp for anyone with WA enabled + phone;
+    # Free is capped at FREE_WA_NOTIF_LIMIT/month via consume_wa_quota, Premium unlimited.
     users = await db.users.find(
-        {"plan": "premium", "notify_channels.whatsapp": True,
-         "phone": {"$nin": [None, ""]}}, {"_id": 0}).to_list(1000)
+        {"notify_channels.whatsapp": True, "phone": {"$nin": [None, ""]}}, {"_id": 0}
+    ).to_list(1000)
     for u in users:
         subs = await db.subscriptions.find(
             {"user_id": u["user_id"], "deleted_at": None}, {"_id": 0}).to_list(500)
@@ -1668,10 +1724,10 @@ async def reminder_sweep():
             if offset not in (s.get("reminders") or []):
                 continue
             key = f"wa:personal:{s['id']}:{s['next_due_date']}:{offset}"
-            if await claim_notif(key):
+            if await claim_notif(key) and await consume_wa_quota(u):
                 msg = (f"Halo {u.get('name') or 'kamu'}! 🔔 Langganan {s['name']} kamu "
                        f"{fmt_rp(s.get('price', 0))} jatuh tempo {when_label(offset)}. "
-                       f"Jangan lupa bayar atau cancel ya — Notifin")
+                       f"Jangan lupa bayar atau cancel ya — Notifin\n{APP_URL}")
                 await send_whatsapp(u["phone"], msg)
 
     # Group subscriptions -> push to unpaid members, WA to eligible unpaid members.
@@ -1701,13 +1757,33 @@ async def reminder_sweep():
                 except Exception as e:
                     logger.info(f"group push skipped: {e}")
             member = await db.users.find_one({"user_id": uid}, {"_id": 0})
-            if (member and member.get("plan") == "premium"
-                    and member.get("notify_channels", {}).get("whatsapp")
+            if (member and member.get("notify_channels", {}).get("whatsapp")
                     and member.get("phone")):
-                if await claim_notif(f"wa:group:{s['id']}:{s['next_due_date']}:{offset}:{uid}"):
+                key = f"wa:group:{s['id']}:{s['next_due_date']}:{offset}:{uid}"
+                if await claim_notif(key) and await consume_wa_quota(member):
                     msg = (f"Halo {member.get('name')}! 🔔 {body_text} "
-                           f"Jangan lupa bayar ya — Notifin")
+                           f"Jangan lupa bayar ya — Notifin\n{APP_URL}")
                     await send_whatsapp(member["phone"], msg)
+
+
+async def expire_premiums_sweep():
+    """Flips any Premium account whose premium_expires_at has passed back to
+    Free — covers both a self-service cancellation reaching the end of its
+    paid period (cancel_at_period_end) and an admin/Mayar grant that simply
+    ran out without a renewal."""
+    now_iso = now_utc().isoformat()
+    expired = await db.users.find(
+        {"plan": "premium", "premium_expires_at": {"$ne": None, "$lt": now_iso}},
+        {"_id": 0, "user_id": 1},
+    ).to_list(1000)
+    if not expired:
+        return
+    ids = [u["user_id"] for u in expired]
+    await db.users.update_many(
+        {"user_id": {"$in": ids}},
+        {"$set": {"plan": "free", "cancel_at_period_end": False}},
+    )
+    logger.info(f"Expired {len(ids)} premium account(s) back to Free")
 
 
 async def scheduler_loop():
@@ -1717,6 +1793,10 @@ async def scheduler_loop():
             await reminder_sweep()
         except Exception as e:
             logger.warning(f"reminder sweep failed: {e}")
+        try:
+            await expire_premiums_sweep()
+        except Exception as e:
+            logger.warning(f"premium expiry sweep failed: {e}")
         await asyncio.sleep(1800)
 
 
@@ -1764,7 +1844,7 @@ async def nudge_member(gid: str, sid: str, body: NudgeBody,
     if target and target.get("phone"):
         res = await send_whatsapp(
             target["phone"],
-            f"Halo {target.get('name')}! 👋 {user.get('name')} mengingatkan: {body_text} — Notifin")
+            f"Halo {target.get('name')}! 👋 {user.get('name')} mengingatkan: {body_text} — Notifin\n{APP_URL}")
         if res.get("status"):
             channels.append("whatsapp")
     return {"status": "sent", "channels": channels, "wa_simulated": not wa_live()}
@@ -1794,7 +1874,7 @@ async def test_send_reminder(body: TestReminderBody, user: dict = Depends(get_cu
 
     msg = (f"[TEST] Halo {user.get('name') or 'kamu'}! 🔔 Langganan {sub['name']} kamu "
            f"{fmt_rp(sub.get('price', 0))} jatuh tempo tanggal {sub.get('next_due_date')}. "
-           f"Jangan lupa bayar atau cancel ya — Notifin")
+           f"Jangan lupa bayar atau cancel ya — Notifin\n{APP_URL}")
     result = await send_whatsapp(user["phone"], msg)
     return {
         "status": "sent" if result.get("status") else "failed",
@@ -2115,6 +2195,43 @@ async def admin_purge_user(body: AdminConfirmEmailBody, _: None = Depends(requir
     return {"status": "ok"}
 
 
+class AdminPromoBody(BaseModel):
+    title: str
+    description: str
+    app_name: Optional[str] = None
+    url: Optional[str] = None
+
+
+@api_router.get("/admin/promos")
+async def admin_list_promos(_: None = Depends(require_admin)):
+    docs = await db.promo_recommendations.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return {"promos": docs}
+
+
+@api_router.post("/admin/promos")
+async def admin_create_promo(body: AdminPromoBody, _: None = Depends(require_admin)):
+    if not body.title.strip() or not body.description.strip():
+        raise HTTPException(status_code=422, detail="Judul dan deskripsi wajib diisi")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "title": body.title.strip(),
+        "description": body.description.strip(),
+        "app_name": (body.app_name or "").strip() or None,
+        "url": (body.url or "").strip() or None,
+        "created_at": now_utc().isoformat(),
+    }
+    await db.promo_recommendations.insert_one(doc)
+    return {"promo": doc}
+
+
+@api_router.delete("/admin/promos/{promo_id}")
+async def admin_delete_promo(promo_id: str, _: None = Depends(require_admin)):
+    res = await db.promo_recommendations.delete_one({"id": promo_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Promo tidak ditemukan")
+    return {"status": "ok"}
+
+
 def _excel_dt(value: Optional[str]) -> Optional[datetime]:
     """Parse a stored ISO timestamp into a naive datetime for Excel — Excel
     doesn't understand timezone-aware datetimes, so drop the tzinfo (values
@@ -2380,6 +2497,26 @@ ADMIN_PAGE_HTML = """<!doctype html>
   <div id="list"></div>
 </div>
 
+<div class="card wide" id="promo-app" style="display:none">
+  <div class="top-row">
+    <h1>Rekomendasi Promo (Premium)</h1>
+  </div>
+  <p class="sub">
+    Isi promo langganan yang sudah kamu cek sendiri validitasnya — ini yang ditampilkan
+    di kartu terkunci Premium di beranda app. Kosong = kartu itu belum menampilkan apa-apa.
+  </p>
+  <div class="panel">
+    <h2>Tambah promo</h2>
+    <input id="promo-title" type="text" placeholder="Judul (mis. Netflix gratis 1 bulan)" />
+    <input id="promo-app-name" type="text" placeholder="Nama aplikasi (opsional)" />
+    <input id="promo-url" type="text" placeholder="Link (opsional)" />
+    <input id="promo-desc" type="text" placeholder="Deskripsi singkat" />
+    <div class="error" id="promo-error"></div>
+    <button class="btn-primary" id="promo-submit-btn" onclick="submitPromo()" style="width:auto">Tambah</button>
+  </div>
+  <div id="promo-list"></div>
+</div>
+
 <script>
   let token = null;
   let searchTimer = null;
@@ -2404,7 +2541,9 @@ ADMIN_PAGE_HTML = """<!doctype html>
       token = data.token;
       document.getElementById('login-card').style.display = 'none';
       document.getElementById('app').style.display = 'block';
+      document.getElementById('promo-app').style.display = 'block';
       loadUsers('');
+      loadPromos();
     } catch (e) {
       errEl.textContent = 'Tidak bisa menghubungi server.';
     } finally {
@@ -2415,6 +2554,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
   function logout() {
     token = null;
     document.getElementById('app').style.display = 'none';
+    document.getElementById('promo-app').style.display = 'none';
     document.getElementById('login-card').style.display = 'block';
     document.getElementById('password').value = '';
   }
@@ -2764,6 +2904,94 @@ ADMIN_PAGE_HTML = """<!doctype html>
     const div = document.createElement('div');
     div.textContent = s;
     return div.innerHTML;
+  }
+
+  async function loadPromos() {
+    const errEl = document.getElementById('promo-error');
+    try {
+      const res = await fetch('/api/admin/promos', { headers: { Authorization: 'Bearer ' + token } });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        errEl.textContent = data.detail || 'Gagal memuat daftar promo';
+        return;
+      }
+      renderPromoList(data.promos);
+    } catch (e) {
+      errEl.textContent = 'Tidak bisa menghubungi server.';
+    }
+  }
+
+  function renderPromoList(promos) {
+    const list = document.getElementById('promo-list');
+    if (!promos.length) {
+      list.innerHTML = '<div class="empty">Belum ada promo. Kartu Premium di beranda masih kosong.</div>';
+      return;
+    }
+    list.innerHTML = promos.map((p) => (
+      '<div class="row">' +
+        '<div class="row-top">' +
+          '<div class="info">' +
+            '<div class="name">' + escapeHtml(p.title) + (p.app_name ? ' &middot; ' + escapeHtml(p.app_name) : '') + '</div>' +
+            '<div class="email">' + escapeHtml(p.description) + '</div>' +
+          '</div>' +
+          '<button class="btn-danger" data-id="' + p.id + '" onclick="deletePromo(this.getAttribute(&quot;data-id&quot;))">Hapus</button>' +
+        '</div>' +
+        (p.url ? '<div class="row-meta">' + chip('Link', p.url) + '</div>' : '') +
+      '</div>'
+    )).join('');
+  }
+
+  async function submitPromo() {
+    const title = document.getElementById('promo-title').value.trim();
+    const app_name = document.getElementById('promo-app-name').value.trim();
+    const url = document.getElementById('promo-url').value.trim();
+    const description = document.getElementById('promo-desc').value.trim();
+    const errEl = document.getElementById('promo-error');
+    const btn = document.getElementById('promo-submit-btn');
+    errEl.textContent = '';
+    if (!title || !description) { errEl.textContent = 'Judul dan deskripsi wajib diisi'; return; }
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/admin/promos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ title, app_name: app_name || null, url: url || null, description }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        errEl.textContent = data.detail || 'Gagal menambah promo';
+        return;
+      }
+      ['promo-title', 'promo-app-name', 'promo-url', 'promo-desc'].forEach((id) => {
+        document.getElementById(id).value = '';
+      });
+      loadPromos();
+    } catch (e) {
+      errEl.textContent = 'Tidak bisa menghubungi server.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function deletePromo(id) {
+    if (!confirm('Hapus promo ini?')) return;
+    try {
+      const res = await fetch('/api/admin/promos/' + encodeURIComponent(id), {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        const data = await res.json().catch(() => ({}));
+        document.getElementById('promo-error').textContent = data.detail || 'Gagal menghapus promo';
+        return;
+      }
+      loadPromos();
+    } catch (e) {
+      document.getElementById('promo-error').textContent = 'Tidak bisa menghubungi server.';
+    }
   }
 </script>
 </body>

@@ -30,7 +30,14 @@ export default function Account() {
   const { user, logout, setUser } = useAuth();
   const { showUpgrade } = useUpgrade();
   const toast = useToast();
-  const { t, language, setLanguage } = useLanguage();
+  const { t, language, locale, setLanguage } = useLanguage();
+
+  const fmtLongDate = (iso?: string | null) => {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+  };
 
   const isPremium = user?.plan === "premium";
   const [push, setPush] = useState(user?.notify_channels?.push ?? true);
@@ -96,15 +103,13 @@ export default function Account() {
     }
   };
 
-  const toggleWa = (val: boolean) => {
-    if (!isPremium && val) {
-      showUpgrade();
-      return;
-    }
-    saveChannels(push, val);
-  };
+  const toggleWa = (val: boolean) => saveChannels(push, val);
 
-  type DowngradeStep = "closed" | "confirm" | "reason" | "offer";
+  const waLimit = user?.wa_notif_limit ?? 5;
+  const waUsed = Math.min(user?.wa_notif_used ?? 0, waLimit);
+  const waQuotaPct = waLimit > 0 ? Math.round((waUsed / waLimit) * 100) : 0;
+
+  type DowngradeStep = "closed" | "confirm" | "reason" | "offer" | "thanks";
   const [downgradeStep, setDowngradeStep] = useState<DowngradeStep>("closed");
   const [downgradeReason, setDowngradeReason] = useState<string | null>(null);
   const [downgradeReasonOther, setDowngradeReasonOther] = useState("");
@@ -175,8 +180,7 @@ export default function Account() {
     try {
       const res: any = await api.downgrade();
       setUser(res.user);
-      closeDowngradeFlow();
-      toast.show(t("account.downgradedToast"), "info");
+      setDowngradeStep("thanks");
     } catch {
     } finally {
       setDowngradeBusy(false);
@@ -212,13 +216,20 @@ export default function Account() {
       {/* Plan card */}
       {isPremium ? (
         <View style={styles.premiumCard}>
-          <View style={styles.premiumIcon}>
-            <MaterialCommunityIcons name="crown" size={22} color="#B45309" />
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={styles.premiumIcon}>
+              <MaterialCommunityIcons name="crown" size={22} color="#B45309" />
+            </View>
+            <View style={{ flex: 1, marginLeft: spacing.md }}>
+              <Text style={styles.premiumTitle}>{t("account.premiumTitle")}</Text>
+              <Text style={styles.premiumSub}>
+                {t("account.premiumActiveUntil", { date: fmtLongDate(user?.premium_expires_at) })}
+              </Text>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.premiumTitle}>{t("account.premiumTitle")}</Text>
-            <Text style={styles.premiumSub}>{t("account.premiumSubtitle")}</Text>
-          </View>
+          {user?.cancel_at_period_end && (
+            <Text style={styles.premiumCancelledNote}>{t("account.premiumCancelledNote")}</Text>
+          )}
         </View>
       ) : (
         <Pressable testID="upgrade-card" onPress={showUpgrade} style={{ marginHorizontal: spacing.xl }}>
@@ -241,49 +252,86 @@ export default function Account() {
 
       {/* Notification channels */}
       <Text style={styles.sectionLabel}>{t("account.notificationsSection")}</Text>
-      <View style={styles.card}>
-        <View style={styles.row}>
-          <View style={styles.rowIcon}>
-            <MaterialCommunityIcons name="cellphone" size={20} color={colors.brand} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.rowTitle}>{t("account.pushTitle")}</Text>
-            <Text style={styles.rowSub}>{t("account.pushSubtitle")}</Text>
-          </View>
-          <Switch
-            testID="toggle-push"
-            value={push}
-            onValueChange={(v) => saveChannels(v, wa)}
-            trackColor={{ true: colors.brand, false: colors.border }}
-            thumbColor="#fff"
-          />
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.row}>
-          <View style={styles.rowIcon}>
-            <MaterialCommunityIcons name="whatsapp" size={20} color="#25D366" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-              <Text style={styles.rowTitle}>{t("account.waTitle")}</Text>
-              {!isPremium && (
-                <View style={styles.lockPill}>
-                  <MaterialCommunityIcons name="lock" size={10} color="#B45309" />
-                  <Text style={styles.lockText}>{t("account.waLock")}</Text>
-                </View>
-              )}
+
+      {isPremium ? (
+        <View style={[styles.waCard, { marginHorizontal: spacing.xl, marginBottom: spacing.lg }]}>
+          <LinearGradient
+            colors={["#FDE68A", "#B45309"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.waPremiumGradient}
+          >
+            <View style={styles.waCardRow}>
+              <View style={styles.waPremiumIconBadge}>
+                <MaterialCommunityIcons name="whatsapp" size={20} color="#92400E" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.waPremiumTitle}>{t("account.waCardTitlePremium")}</Text>
+                <Text style={styles.waPremiumSub}>{t("account.waCardSubtitle")}</Text>
+              </View>
+              <Switch
+                testID="toggle-whatsapp"
+                value={wa}
+                onValueChange={toggleWa}
+                trackColor={{ true: "#FFFFFF", false: "rgba(255,255,255,0.45)" }}
+                thumbColor={wa ? "#B45309" : "#FFFFFF"}
+              />
             </View>
-            <Text style={styles.rowSub}>{t("account.waSubtitle")}</Text>
-          </View>
-          <Switch
-            testID="toggle-whatsapp"
-            value={wa}
-            onValueChange={toggleWa}
-            trackColor={{ true: colors.brand, false: colors.border }}
-            thumbColor="#fff"
-          />
+            <View style={styles.waPremiumQuotaRow}>
+              <MaterialCommunityIcons name="infinity" size={14} color="#FFFBEB" />
+              <Text style={styles.waPremiumQuotaText}>{t("account.waQuotaPremium")}</Text>
+            </View>
+          </LinearGradient>
         </View>
-        <View style={styles.divider} />
+      ) : (
+        <View style={[styles.waCard, styles.waFreeCard, { marginHorizontal: spacing.xl, marginBottom: spacing.lg }]}>
+          <View style={styles.waCardRow}>
+            <View style={styles.rowIcon}>
+              <MaterialCommunityIcons name="whatsapp" size={20} color="#25D366" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>{t("account.waCardTitleFree")}</Text>
+              <Text style={styles.rowSub}>{t("account.waCardSubtitle")}</Text>
+            </View>
+            <Switch
+              testID="toggle-whatsapp"
+              value={wa}
+              onValueChange={toggleWa}
+              trackColor={{ true: colors.brand, false: colors.border }}
+              thumbColor="#fff"
+            />
+          </View>
+
+          <View style={styles.waQuotaBarTrack}>
+            <View style={[styles.waQuotaBarFill, { width: `${waQuotaPct}%` }]} />
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={styles.waQuotaLabel}>
+              {t("account.waQuotaFree", { used: waUsed, limit: waLimit })}
+            </Text>
+            <Text style={styles.waQuotaResetLabel}>{t("account.waQuotaResetNote")}</Text>
+          </View>
+
+          <View style={styles.waUpsellStrip}>
+            <Text style={styles.waUpsellTitle}>{t("account.waUpsellTitle")}</Text>
+            {[
+              t("account.waUpsellBenefit1"),
+              t("account.waUpsellBenefit2"),
+              t("account.waUpsellBenefit3"),
+            ].map((b) => (
+              <View key={b} style={styles.waUpsellBenefitRow}>
+                <MaterialCommunityIcons name="check-circle" size={14} color={colors.brand} />
+                <Text style={styles.waUpsellBenefitText}>{b}</Text>
+              </View>
+            ))}
+            <Pressable testID="wa-upsell-button" style={styles.waUpsellBtn} onPress={showUpgrade}>
+              <Text style={styles.waUpsellBtnText}>{t("account.waUpsellCta")}</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.card}>
         <Pressable
           testID="phone-row"
           style={styles.row}
@@ -303,7 +351,7 @@ export default function Account() {
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
         </Pressable>
-        {isPremium && wa && !user?.wa_live && (
+        {wa && !user?.wa_live && (
           <View style={styles.simulBanner}>
             <MaterialCommunityIcons name="flask-outline" size={16} color="#B45309" />
             <Text style={styles.simulText}>{t("account.simulationBanner")}</Text>
@@ -361,7 +409,7 @@ export default function Account() {
       {/* Actions */}
       <Text style={styles.sectionLabel}>{t("account.otherSection")}</Text>
       <View style={styles.card}>
-        {isPremium && (
+        {isPremium && !user?.cancel_at_period_end && (
           <>
             <Pressable
               testID="downgrade-button"
@@ -589,6 +637,27 @@ export default function Account() {
                 </Pressable>
               </>
             )}
+
+            {downgradeStep === "thanks" && (
+              <View style={{ alignItems: "center" }}>
+                <View style={styles.thanksIconBadge}>
+                  <MaterialCommunityIcons name="heart" size={30} color="#F59E0B" />
+                </View>
+                <Text style={[styles.modalTitle, { textAlign: "center" }]}>
+                  {t("downgradeFlow.thanksTitle")}
+                </Text>
+                <Text style={[styles.modalSub, { textAlign: "center" }]}>
+                  {t("downgradeFlow.thanksBody", { date: fmtLongDate(user?.premium_expires_at) })}
+                </Text>
+                <View style={{ alignSelf: "stretch" }}>
+                  <Button
+                    testID="downgrade-thanks-close"
+                    title={t("downgradeFlow.thanksClose")}
+                    onPress={closeDowngradeFlow}
+                  />
+                </View>
+              </View>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -643,13 +712,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   premiumCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
     marginHorizontal: spacing.xl,
     backgroundColor: "#FEF3C7",
     borderRadius: radius.lg,
     padding: spacing.lg,
+  },
+  premiumCancelledNote: {
+    fontFamily: font.medium,
+    fontSize: fontSize.sm,
+    color: "#92400E",
+    marginTop: spacing.sm,
+    lineHeight: 18,
   },
   premiumIcon: {
     width: 44,
@@ -677,6 +750,61 @@ const styles = StyleSheet.create({
     ...shadow.soft,
     overflow: "hidden",
   },
+  waCard: { borderRadius: radius.lg, overflow: "hidden", ...shadow.soft },
+  waFreeCard: {
+    backgroundColor: colors.surfaceSecondary,
+    padding: spacing.lg,
+  },
+  waPremiumGradient: { padding: spacing.lg },
+  waCardRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  waPremiumIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(255,255,255,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  waPremiumTitle: { fontFamily: font.bold, fontSize: fontSize.lg, color: "#4A2A0A" },
+  waPremiumSub: { fontFamily: font.medium, fontSize: fontSize.sm, color: "#7C4A0F", marginTop: 1 },
+  waPremiumQuotaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.35)",
+  },
+  waPremiumQuotaText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: "#FFFBEB" },
+  waQuotaBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.surfaceTertiary,
+    marginTop: spacing.md,
+    overflow: "hidden",
+  },
+  waQuotaBarFill: { height: "100%", backgroundColor: colors.brand, borderRadius: 3 },
+  waQuotaLabel: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurface, marginTop: spacing.xs },
+  waQuotaResetLabel: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: spacing.xs },
+  waUpsellStrip: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  waUpsellTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface, marginBottom: spacing.sm },
+  waUpsellBenefitRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: 6 },
+  waUpsellBenefitText: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.onSurface },
+  waUpsellBtn: {
+    marginTop: spacing.sm,
+    alignSelf: "flex-start",
+    backgroundColor: colors.brand,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+  },
+  waUpsellBtnText: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.onBrandPrimary },
   segment: {
     flexDirection: "row",
     marginHorizontal: spacing.xl,
@@ -700,16 +828,6 @@ const styles = StyleSheet.create({
   },
   rowTitle: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface },
   rowSub: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 1 },
-  lockPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.pill,
-  },
-  lockText: { fontFamily: font.bold, fontSize: 10, color: "#B45309" },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 66 },
   simulBanner: {
     flexDirection: "row",
@@ -823,4 +941,14 @@ const styles = StyleSheet.create({
   offerTakeBtnBest: { backgroundColor: colors.brand, borderColor: colors.brand },
   offerTakeBtnText: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.brand },
   offerTakeBtnTextBest: { color: colors.onBrandPrimary },
+
+  thanksIconBadge: {
+    width: 68,
+    height: 68,
+    borderRadius: radius.lg,
+    backgroundColor: "#FEF3C7",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.md,
+  },
 });

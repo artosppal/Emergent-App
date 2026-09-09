@@ -31,6 +31,8 @@ interface GroupItem {
   sub_count: number;
   my_share: number;
   total_price: number;
+  paid_count: number;
+  unpaid_count: number;
 }
 
 export default function Groups() {
@@ -186,6 +188,7 @@ export default function Groups() {
                   </Text>
                   {item.is_owner && (
                     <View style={styles.ownerPill}>
+                      <MaterialCommunityIcons name="crown" size={12} color="#92400E" />
                       <Text style={styles.ownerPillText}>{t("groups.coordinator")}</Text>
                     </View>
                   )}
@@ -193,6 +196,16 @@ export default function Groups() {
                 <Text style={styles.groupMeta}>
                   {t("groups.meta", { members: item.member_count, subs: item.sub_count })}
                 </Text>
+                {item.paid_count + item.unpaid_count > 0 && (
+                  <Text style={styles.groupPaidStatus}>
+                    {item.unpaid_count === 0
+                      ? t("groups.allPaidSummary")
+                      : t("groups.paidUnpaidSummary", {
+                          paid: item.paid_count,
+                          unpaid: item.unpaid_count,
+                        })}
+                  </Text>
+                )}
                 <Text style={styles.groupShare}>
                   {t("groups.share", { amount: formatRupiah(item.my_share) })}
                 </Text>
@@ -316,13 +329,17 @@ const styles = StyleSheet.create({
   },
   groupName: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface, flexShrink: 1 },
   ownerPill: {
-    backgroundColor: colors.brandSecondary,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#FEF3C7",
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: 4,
     borderRadius: radius.pill,
   },
-  ownerPillText: { fontFamily: font.semibold, fontSize: 10, color: colors.onBrandSecondary },
+  ownerPillText: { fontFamily: font.extrabold, fontSize: 12, color: "#92400E" },
   groupMeta: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted },
+  groupPaidStatus: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurface },
   groupShare: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.brand },
 
   backdrop: {

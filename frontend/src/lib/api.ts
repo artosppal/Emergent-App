@@ -101,6 +101,7 @@ export const api = {
     apiFetch("/auth/limit", { method: "PUT", body: JSON.stringify({ monthly_limit }) }),
 
   dashboard: () => apiFetch("/dashboard"),
+  promos: () => apiFetch("/promos"),
   spendingHistory: (range: "monthly" | "yearly") =>
     apiFetch(`/analytics/spending?range=${range}`),
   listSubs: (category?: string, status?: string) => {

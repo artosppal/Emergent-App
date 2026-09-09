@@ -23,6 +23,11 @@ export interface User {
   wa_live?: boolean;
   notify_channels: { push: boolean; whatsapp: boolean };
   monthly_limit?: number | null;
+  premium_since?: string | null;
+  premium_expires_at?: string | null;
+  cancel_at_period_end?: boolean;
+  wa_notif_used?: number;
+  wa_notif_limit?: number | null;
 }
 
 interface AuthState {

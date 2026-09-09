@@ -7,6 +7,7 @@ import {
   RefreshControl,
   Pressable,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -16,11 +17,20 @@ import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/context/AuthContext";
+import { useUpgrade } from "@/src/context/UpgradeContext";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { SubscriptionCard, Subscription, CategoryLogo } from "@/src/components/SubscriptionCard";
 import { SectionTitle, EmptyState, Button } from "@/src/components/ui";
 import { getCategory } from "@/src/constants/categories";
 import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
+
+interface PromoItem {
+  id: string;
+  title: string;
+  description: string;
+  app_name?: string | null;
+  url?: string | null;
+}
 
 interface DashboardData {
   total_this_month: number;
@@ -39,11 +49,31 @@ export default function Dashboard() {
   const tabH = useContext(BottomTabBarHeightContext) ?? 64 + insets.bottom;
   const router = useRouter();
   const { user } = useAuth();
+  const { showUpgrade } = useUpgrade();
   const { t } = useLanguage();
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [promoOpen, setPromoOpen] = useState(false);
+  const [promos, setPromos] = useState<PromoItem[] | null>(null);
+  const [promoLoading, setPromoLoading] = useState(false);
+
+  const togglePromo = async () => {
+    const next = !promoOpen;
+    setPromoOpen(next);
+    if (next && promos === null) {
+      setPromoLoading(true);
+      try {
+        const res: any = await api.promos();
+        setPromos(res.promos || []);
+      } catch {
+        setPromos([]);
+      } finally {
+        setPromoLoading(false);
+      }
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -175,6 +205,68 @@ export default function Dashboard() {
           </View>
         </LinearGradient>
         </Pressable>
+      </View>
+
+      {/* Promo recommendations — Premium-only, admin-curated */}
+      <View style={styles.section}>
+        {data?.plan === "premium" ? (
+          <View style={styles.promoCard}>
+            <Pressable testID="promo-card-toggle" onPress={togglePromo} style={styles.promoHeaderRow}>
+              <View style={styles.promoIconWrap}>
+                <MaterialCommunityIcons name="gift-outline" size={18} color="#92400E" />
+              </View>
+              <Text style={styles.promoTitle}>{t("dashboard.promoCardTitle")}</Text>
+              <MaterialCommunityIcons
+                name={promoOpen ? "chevron-up" : "chevron-down"}
+                size={20}
+                color="#92400E"
+              />
+            </Pressable>
+            {promoOpen && (
+              <View style={styles.promoBody}>
+                {promoLoading ? (
+                  <ActivityIndicator color="#B45309" style={{ marginVertical: spacing.lg }} />
+                ) : promos && promos.length > 0 ? (
+                  promos.map((p) => (
+                    <View key={p.id} style={styles.promoItem}>
+                      <Text style={styles.promoItemTitle}>
+                        {p.title}
+                        {p.app_name ? ` · ${p.app_name}` : ""}
+                      </Text>
+                      <Text style={styles.promoItemDesc}>{p.description}</Text>
+                      {!!p.url && (
+                        <Pressable onPress={() => Linking.openURL(p.url!)}>
+                          <Text style={styles.promoItemLink} numberOfLines={1}>
+                            {p.url}
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  ))
+                ) : (
+                  <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
+                    <Text style={styles.promoEmptyTitle}>{t("dashboard.promoEmptyTitle")}</Text>
+                    <Text style={styles.promoEmptySub}>{t("dashboard.promoEmptySubtitle")}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        ) : (
+          <Pressable testID="promo-card-locked" onPress={showUpgrade} style={styles.promoLockedCard}>
+            <View style={styles.promoLockIconWrap}>
+              <MaterialCommunityIcons name="lock" size={18} color="#6B7280" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.promoLockedTitle}>{t("dashboard.promoCardTitle")}</Text>
+              <Text style={styles.promoLockedSub}>{t("dashboard.promoCardLockedSub")}</Text>
+            </View>
+            <View style={styles.promoUnlockPill}>
+              <MaterialCommunityIcons name="crown" size={11} color="#B45309" />
+              <Text style={styles.promoUnlockPillText}>{t("dashboard.promoCardUnlock")}</Text>
+            </View>
+          </Pressable>
+        )}
       </View>
 
       {isEmpty ? (
@@ -402,4 +494,69 @@ const styles = StyleSheet.create({
   chartValue: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
   track: { height: 9, borderRadius: radius.pill, backgroundColor: colors.surfaceTertiary, overflow: "hidden" },
   fill: { height: 9, borderRadius: radius.pill },
+
+  promoCard: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    overflow: "hidden",
+  },
+  promoHeaderRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg },
+  promoIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(255,255,255,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  promoTitle: { flex: 1, fontFamily: font.bold, fontSize: fontSize.base, color: "#92400E" },
+  promoBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.md },
+  promoItem: {
+    backgroundColor: "rgba(255,255,255,0.55)",
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  promoItemTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: "#78350F" },
+  promoItemDesc: { fontFamily: font.regular, fontSize: fontSize.sm, color: "#92400E", marginTop: 2, lineHeight: 19 },
+  promoItemLink: { fontFamily: font.semibold, fontSize: fontSize.sm, color: "#B45309", marginTop: spacing.xs },
+  promoEmptyTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: "#92400E" },
+  promoEmptySub: {
+    fontFamily: font.regular,
+    fontSize: fontSize.sm,
+    color: "#B45309",
+    marginTop: 2,
+    textAlign: "center",
+  },
+
+  promoLockedCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    ...shadow.soft,
+  },
+  promoLockIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceTertiary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  promoLockedTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
+  promoLockedSub: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 2, lineHeight: 18 },
+  promoUnlockPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+  },
+  promoUnlockPillText: { fontFamily: font.bold, fontSize: 10, color: "#B45309" },
 });
