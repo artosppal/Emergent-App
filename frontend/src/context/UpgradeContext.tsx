@@ -56,11 +56,18 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
     { icon: "chart-box", text: t("upgrade.benefitSummary") },
   ];
 
+  const [whatsNew, setWhatsNew] = useState<{ id: string; title: string; description: string }[]>([]);
+  const isReturning = !!user?.premium_since && user?.plan !== "premium";
+
   const showUpgrade = useCallback(() => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setStep("plan");
     setOtpInput("");
     ref.current?.present();
+    api
+      .whatsNew()
+      .then((res: any) => setWhatsNew(res.items || []))
+      .catch(() => {});
   }, []);
 
   const doUpgrade = useCallback(async () => {
@@ -164,8 +171,26 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
           </View>
           {step === "plan" && (
             <>
+              {isReturning && <Text style={styles.welcomeBack}>{t("upgrade.welcomeBack")}</Text>}
               <Text style={styles.title}>{t("upgrade.title")}</Text>
               <Text style={styles.subtitle}>{t("upgrade.subtitle")}</Text>
+
+              {whatsNew.length > 0 && (
+                <View style={styles.whatsNewBox}>
+                  <Text style={styles.whatsNewHeader}>
+                    {isReturning ? t("upgrade.whatsNewReturning") : t("upgrade.whatsNewHeader")}
+                  </Text>
+                  {whatsNew.slice(0, 3).map((it) => (
+                    <View key={it.id} style={styles.whatsNewRow}>
+                      <MaterialCommunityIcons name="star-four-points-outline" size={13} color={colors.brand} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.whatsNewTitle}>{it.title}</Text>
+                        <Text style={styles.whatsNewDesc}>{it.description}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
 
               <View style={styles.benefits}>
                 {BENEFITS.map((b) => (
@@ -358,6 +383,30 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     lineHeight: 21,
   },
+  welcomeBack: {
+    fontFamily: font.bold,
+    fontSize: fontSize.sm,
+    color: colors.brand,
+    textAlign: "center",
+    marginBottom: spacing.xs,
+  },
+  whatsNewBox: {
+    alignSelf: "stretch",
+    marginTop: spacing.lg,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  whatsNewHeader: {
+    fontFamily: font.bold,
+    fontSize: fontSize.sm,
+    color: colors.onBrandTertiary,
+    marginBottom: 2,
+  },
+  whatsNewRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  whatsNewTitle: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurface },
+  whatsNewDesc: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: 1, lineHeight: 16 },
   benefits: {
     alignSelf: "stretch",
     marginTop: spacing.xl,

@@ -187,6 +187,20 @@ export default function Account() {
     }
   };
 
+  const [resuming, setResuming] = useState(false);
+  const resumeSubscription = async () => {
+    setResuming(true);
+    try {
+      const res: any = await api.resumeSubscription();
+      setUser(res.user);
+      toast.show(t("account.resumedToast"), "success");
+    } catch {
+      toast.show(t("account.errResume"), "error");
+    } finally {
+      setResuming(false);
+    }
+  };
+
   const initials = (user?.name || "U")
     .split(" ")
     .map((w) => w[0])
@@ -228,7 +242,21 @@ export default function Account() {
             </View>
           </View>
           {user?.cancel_at_period_end && (
-            <Text style={styles.premiumCancelledNote}>{t("account.premiumCancelledNote")}</Text>
+            <>
+              <Text style={styles.premiumCancelledNote}>{t("account.premiumCancelledNote")}</Text>
+              <Pressable
+                testID="resume-subscription-button"
+                style={styles.resumeBtn}
+                onPress={resumeSubscription}
+                disabled={resuming}
+              >
+                {resuming ? (
+                  <ActivityIndicator color="#92400E" size="small" />
+                ) : (
+                  <Text style={styles.resumeBtnText}>{t("account.resumeAction")}</Text>
+                )}
+              </Pressable>
+            </>
           )}
         </View>
       ) : (
@@ -724,6 +752,17 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     lineHeight: 18,
   },
+  resumeBtn: {
+    alignSelf: "flex-start",
+    marginTop: spacing.md,
+    backgroundColor: "rgba(255,255,255,0.6)",
+    borderWidth: 1.5,
+    borderColor: "#B45309",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+  },
+  resumeBtnText: { fontFamily: font.bold, fontSize: fontSize.sm, color: "#92400E" },
   premiumIcon: {
     width: 44,
     height: 44,

@@ -85,6 +85,7 @@ export const api = {
   upgrade: (tier: "monthly" | "yearly") =>
     apiFetch("/auth/upgrade", { method: "POST", body: JSON.stringify({ tier }) }),
   downgrade: () => apiFetch("/auth/downgrade", { method: "POST" }),
+  resumeSubscription: () => apiFetch("/auth/resume-subscription", { method: "POST" }),
   downgradeFeedback: (body: { reason: string; reason_other?: string | null }) =>
     apiFetch("/auth/downgrade/feedback", { method: "POST", body: JSON.stringify(body) }),
   retentionOffer: (offer: "3m" | "6m" | "12m") =>
@@ -102,6 +103,7 @@ export const api = {
 
   dashboard: () => apiFetch("/dashboard"),
   promos: () => apiFetch("/promos"),
+  whatsNew: () => apiFetch("/whats-new"),
   spendingHistory: (range: "monthly" | "yearly") =>
     apiFetch(`/analytics/spending?range=${range}`),
   listSubs: (category?: string, status?: string) => {

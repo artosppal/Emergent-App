@@ -934,6 +934,22 @@ async def cancel_subscription(user: dict = Depends(get_current_user)):
     return {"user": public_user(updated)}
 
 
+@api_router.post("/auth/resume-subscription")
+async def resume_subscription(user: dict = Depends(get_current_user)):
+    """Undo a scheduled cancellation — only meaningful while still on
+    Premium (before expire_premiums_sweep() has flipped the account to
+    Free), since there's no real recurring charge behind this yet."""
+    if user.get("plan") != "premium":
+        raise HTTPException(
+            status_code=400,
+            detail="Premium kamu sudah berakhir — upgrade lagi untuk lanjut.",
+        )
+    await db.users.update_one(
+        {"user_id": user["user_id"]}, {"$set": {"cancel_at_period_end": False}})
+    updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return {"user": public_user(updated)}
+
+
 @api_router.post("/auth/downgrade/feedback")
 async def downgrade_feedback(body: DowngradeFeedbackBody, user: dict = Depends(get_current_user)):
     """Logged before the plan actually flips — the retention offer is shown
@@ -1202,6 +1218,17 @@ async def list_promos(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Fitur ini khusus akun Premium")
     docs = await db.promo_recommendations.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
     return {"promos": docs}
+
+
+# ---------------------------------------------------------------------------
+# "What's new" — admin-curated announcements shown to win back a Free user
+# who used to be Premium (or to give any Free user a reason to upgrade).
+# Same "never invent it" rule as promos: content only comes from /admin/whats-new.
+# ---------------------------------------------------------------------------
+@api_router.get("/whats-new")
+async def list_whats_new(user: dict = Depends(get_current_user)):
+    docs = await db.whats_new.find({}, {"_id": 0}).sort("created_at", -1).to_list(10)
+    return {"items": docs}
 
 
 # ---------------------------------------------------------------------------
@@ -2232,6 +2259,39 @@ async def admin_delete_promo(promo_id: str, _: None = Depends(require_admin)):
     return {"status": "ok"}
 
 
+class AdminWhatsNewBody(BaseModel):
+    title: str
+    description: str
+
+
+@api_router.get("/admin/whats-new")
+async def admin_list_whats_new(_: None = Depends(require_admin)):
+    docs = await db.whats_new.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return {"items": docs}
+
+
+@api_router.post("/admin/whats-new")
+async def admin_create_whats_new(body: AdminWhatsNewBody, _: None = Depends(require_admin)):
+    if not body.title.strip() or not body.description.strip():
+        raise HTTPException(status_code=422, detail="Judul dan deskripsi wajib diisi")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "title": body.title.strip(),
+        "description": body.description.strip(),
+        "created_at": now_utc().isoformat(),
+    }
+    await db.whats_new.insert_one(doc)
+    return {"item": doc}
+
+
+@api_router.delete("/admin/whats-new/{item_id}")
+async def admin_delete_whats_new(item_id: str, _: None = Depends(require_admin)):
+    res = await db.whats_new.delete_one({"id": item_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Item tidak ditemukan")
+    return {"status": "ok"}
+
+
 def _excel_dt(value: Optional[str]) -> Optional[datetime]:
     """Parse a stored ISO timestamp into a naive datetime for Excel — Excel
     doesn't understand timezone-aware datetimes, so drop the tzinfo (values
@@ -2497,6 +2557,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
   <div class="main-nav">
     <div class="main-nav-item active" id="main-tab-accounts" onclick="switchMainTab('accounts')">Kelola Akun</div>
     <div class="main-nav-item" id="main-tab-promo" onclick="switchMainTab('promo')">Rekomendasi Promo</div>
+    <div class="main-nav-item" id="main-tab-whatsnew" onclick="switchMainTab('whatsnew')">Apa yang Baru</div>
   </div>
 
   <div class="card wide panel-section active" id="panel-accounts">
@@ -2564,6 +2625,21 @@ ADMIN_PAGE_HTML = """<!doctype html>
     </div>
     <div id="promo-list"></div>
   </div>
+
+  <div class="card wide panel-section" id="panel-whatsnew">
+    <p class="sub">
+      Kabar/fitur baru yang ditampilkan ke user Free — terutama yang dulu pernah Premium — buat
+      alasan balik lagi berlangganan. Kosong = tidak ada apa-apa yang ditampilkan.
+    </p>
+    <div class="panel">
+      <h2>Tambah kabar baru</h2>
+      <input id="wn-title" type="text" placeholder="Judul (mis. Notifikasi WhatsApp kini bisa untuk semua)" />
+      <input id="wn-desc" type="text" placeholder="Deskripsi singkat" />
+      <div class="error" id="wn-error"></div>
+      <button class="btn-primary" id="wn-submit-btn" onclick="submitWhatsNew()" style="width:auto">Tambah</button>
+    </div>
+    <div id="wn-list"></div>
+  </div>
 </div>
 
 <script>
@@ -2592,6 +2668,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
       document.getElementById('shell').style.display = 'block';
       loadUsers('');
       loadPromos();
+      loadWhatsNew();
     } catch (e) {
       errEl.textContent = 'Tidak bisa menghubungi server.';
     } finally {
@@ -2609,8 +2686,10 @@ ADMIN_PAGE_HTML = """<!doctype html>
   function switchMainTab(tab) {
     document.getElementById('main-tab-accounts').classList.toggle('active', tab === 'accounts');
     document.getElementById('main-tab-promo').classList.toggle('active', tab === 'promo');
+    document.getElementById('main-tab-whatsnew').classList.toggle('active', tab === 'whatsnew');
     document.getElementById('panel-accounts').classList.toggle('active', tab === 'accounts');
     document.getElementById('panel-promo').classList.toggle('active', tab === 'promo');
+    document.getElementById('panel-whatsnew').classList.toggle('active', tab === 'whatsnew');
   }
 
   function onSearchInput() {
@@ -3045,6 +3124,90 @@ ADMIN_PAGE_HTML = """<!doctype html>
       loadPromos();
     } catch (e) {
       document.getElementById('promo-error').textContent = 'Tidak bisa menghubungi server.';
+    }
+  }
+
+  async function loadWhatsNew() {
+    const errEl = document.getElementById('wn-error');
+    try {
+      const res = await fetch('/api/admin/whats-new', { headers: { Authorization: 'Bearer ' + token } });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        errEl.textContent = data.detail || 'Gagal memuat daftar';
+        return;
+      }
+      renderWhatsNewList(data.items);
+    } catch (e) {
+      errEl.textContent = 'Tidak bisa menghubungi server.';
+    }
+  }
+
+  function renderWhatsNewList(items) {
+    const list = document.getElementById('wn-list');
+    if (!items.length) {
+      list.innerHTML = '<div class="empty">Belum ada kabar baru ditambahkan.</div>';
+      return;
+    }
+    list.innerHTML = items.map((it) => (
+      '<div class="promo-row">' +
+        '<div class="promo-row-top">' +
+          '<div style="min-width:0">' +
+            '<div class="promo-title">' + escapeHtml(it.title) + '</div>' +
+            '<div class="promo-desc">' + escapeHtml(it.description) + '</div>' +
+          '</div>' +
+          '<button class="btn-danger" data-id="' + it.id + '" onclick="deleteWhatsNew(this.getAttribute(&quot;data-id&quot;))">Hapus</button>' +
+        '</div>' +
+      '</div>'
+    )).join('');
+  }
+
+  async function submitWhatsNew() {
+    const title = document.getElementById('wn-title').value.trim();
+    const description = document.getElementById('wn-desc').value.trim();
+    const errEl = document.getElementById('wn-error');
+    const btn = document.getElementById('wn-submit-btn');
+    errEl.textContent = '';
+    if (!title || !description) { errEl.textContent = 'Judul dan deskripsi wajib diisi'; return; }
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/admin/whats-new', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ title, description }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        errEl.textContent = data.detail || 'Gagal menambah';
+        return;
+      }
+      document.getElementById('wn-title').value = '';
+      document.getElementById('wn-desc').value = '';
+      loadWhatsNew();
+    } catch (e) {
+      errEl.textContent = 'Tidak bisa menghubungi server.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function deleteWhatsNew(id) {
+    if (!confirm('Hapus item ini?')) return;
+    try {
+      const res = await fetch('/api/admin/whats-new/' + encodeURIComponent(id), {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        const data = await res.json().catch(() => ({}));
+        document.getElementById('wn-error').textContent = data.detail || 'Gagal menghapus';
+        return;
+      }
+      loadWhatsNew();
+    } catch (e) {
+      document.getElementById('wn-error').textContent = 'Tidak bisa menghubungi server.';
     }
   }
 </script>
