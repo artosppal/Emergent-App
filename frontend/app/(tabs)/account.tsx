@@ -549,6 +549,7 @@ export default function Account() {
                     <View key={o.key} style={[styles.offerCard, o.best && styles.offerCardBest]}>
                       {o.best && (
                         <View style={styles.offerBadge}>
+                          <MaterialCommunityIcons name="star" size={12} color="#FFFFFF" />
                           <Text style={styles.offerBadgeText}>{t("downgradeFlow.offerRecommended")}</Text>
                         </View>
                       )}
@@ -779,14 +780,28 @@ const styles = StyleSheet.create({
   offerCardBest: { borderColor: colors.brand, backgroundColor: colors.brandTertiary },
   offerBadge: {
     position: "absolute",
-    top: -10,
+    top: -14,
     left: spacing.lg,
-    backgroundColor: colors.brand,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#F59E0B",
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
     borderRadius: radius.pill,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 3,
   },
-  offerBadgeText: { fontFamily: font.bold, fontSize: 10, color: colors.onBrandPrimary },
+  offerBadgeText: {
+    fontFamily: font.extrabold,
+    fontSize: 11,
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
   offerLabel: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
   offerPrice: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: colors.brandDark, marginTop: 2 },
   offerWas: {
