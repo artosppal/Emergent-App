@@ -570,7 +570,10 @@ async def login_whatsapp_request(body: WhatsappLoginRequestBody):
         phone = normalize_phone(body.phone)
     except ValueError:
         raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid")
-    user = await db.users.find_one({"phone": phone, "phone_verified": True})
+    # Matches on the number alone, verified or not — accounts that saved a
+    # WhatsApp number before OTP verification existed still own that number,
+    # and the OTP round-trip below re-proves that ownership regardless.
+    user = await db.users.find_one({"phone": phone})
     if not user:
         raise HTTPException(status_code=404, detail="Nomor WhatsApp belum terdaftar")
     code = await create_otp("login_whatsapp", phone)
@@ -585,9 +588,14 @@ async def login_whatsapp_verify(body: WhatsappLoginVerifyBody):
     except ValueError:
         raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid")
     await check_otp("login_whatsapp", phone, body.code.strip())
-    user = await db.users.find_one({"phone": phone, "phone_verified": True}, {"_id": 0})
+    user = await db.users.find_one({"phone": phone}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="Nomor WhatsApp belum terdaftar")
+    # They just proved live ownership of this number — self-heal the flag so
+    # it stops blocking this account from WhatsApp login and Premium.
+    if not user.get("phone_verified"):
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"phone_verified": True}})
+        user["phone_verified"] = True
     token = make_session_token(user["user_id"])
     await persist_session(user["user_id"], token)
     return {"session_token": token, "user": public_user(user)}
