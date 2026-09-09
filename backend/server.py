@@ -2330,16 +2330,17 @@ ADMIN_PAGE_HTML = """<!doctype html>
 <style>
   * { box-sizing: border-box; }
   body {
-    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center;
     background: #F7FAF8; color: #182924;
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
     padding: 24px;
   }
+  #login-card { margin: auto; }
   .card {
     width: 100%; max-width: 480px; background: #FFFFFF; border-radius: 20px;
     padding: 28px; box-shadow: 0 16px 32px -20px rgba(11,61,46,0.28);
   }
-  .wide { max-width: 760px; }
+  .wide { max-width: 720px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
   p.sub { color: #6B7280; font-size: 14px; margin: 0 0 20px; }
   input {
@@ -2430,8 +2431,51 @@ ADMIN_PAGE_HTML = """<!doctype html>
   .btn-danger { background: #FEE2E2; color: #B91C1C; }
   .btn-restore { background: #D1FAE5; color: #065F46; }
   .btn-purge { background: #EF4444; color: #fff; }
-  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .row-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .row-actions button { flex: 1 1 auto; min-width: 100px; }
   .add-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+
+  /* Shell: shared header + top-level nav between Akun / Promo */
+  #shell { display: none; width: 100%; max-width: 720px; }
+  .shell-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .main-nav {
+    display: flex; gap: 8px; background: #FFFFFF; border-radius: 16px; padding: 6px;
+    margin-bottom: 18px; box-shadow: 0 8px 20px -16px rgba(11,61,46,0.3);
+  }
+  .main-nav-item {
+    flex: 1; text-align: center; padding: 11px 8px; border-radius: 12px;
+    font-size: 14px; font-weight: 700; color: #6B7280; cursor: pointer;
+  }
+  .main-nav-item.active { background: #059669; color: #fff; }
+  .panel-section { display: none; }
+  .panel-section.active { display: block; }
+
+  /* Promo cards */
+  .promo-row {
+    background: #FFFFFF; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px;
+    border: 1px solid #F3F4F6;
+  }
+  .promo-row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .promo-title { font-weight: 700; font-size: 14px; }
+  .promo-desc { color: #4B5563; font-size: 13px; margin-top: 4px; line-height: 1.5; }
+  .promo-link {
+    display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 700;
+    color: #059669; word-break: break-all;
+  }
+
+  @media (max-width: 560px) {
+    body { padding: 12px; }
+    .card { padding: 20px; border-radius: 16px; }
+    h1 { font-size: 18px; }
+    .main-nav-item { font-size: 13px; padding: 10px 6px; }
+    .row-actions button { min-width: 0; flex: 1 1 45%; }
+    .toolbar-actions { width: 100%; }
+    .toolbar-actions button { flex: 1; }
+    .panel-actions button { flex: 1 1 45%; }
+  }
 </style>
 </head>
 <body>
@@ -2444,77 +2488,82 @@ ADMIN_PAGE_HTML = """<!doctype html>
   <button class="btn-primary" id="login-btn" onclick="login()">Masuk</button>
 </div>
 
-<div class="card wide" id="app">
-  <div class="top-row">
+<div id="shell">
+  <div class="shell-header">
     <h1>Notifin Admin</h1>
     <button class="logout" onclick="logout()">Keluar</button>
   </div>
-  <p class="sub">Cari akun berdasarkan email atau nama, ubah status Premium, atau kelola akun.</p>
 
-  <div class="add-toolbar">
-    <button class="btn-add" onclick="toggleAddForm()">+ Tambah Akun</button>
+  <div class="main-nav">
+    <div class="main-nav-item active" id="main-tab-accounts" onclick="switchMainTab('accounts')">Kelola Akun</div>
+    <div class="main-nav-item" id="main-tab-promo" onclick="switchMainTab('promo')">Rekomendasi Promo</div>
   </div>
 
-  <div class="panel" id="add-panel" style="display:none">
-    <h2>Tambah akun baru</h2>
-    <input id="new-name" type="text" placeholder="Nama" />
-    <input id="new-email" type="email" placeholder="Email" />
-    <input id="new-phone" type="text" placeholder="Nomor WhatsApp (opsional)" />
-    <input id="new-password" type="text" placeholder="Password (kosongkan untuk buat otomatis)" />
-    <select id="new-plan">
-      <option value="free">Free</option>
-      <option value="premium">Premium</option>
-    </select>
-    <div class="error" id="add-error"></div>
-    <div class="panel-actions">
-      <button class="btn-primary" id="add-submit-btn" onclick="submitAddUser()" style="width:auto;flex:1">Buat Akun</button>
-      <button class="btn-secondary" onclick="toggleAddForm()" style="border:none;border-radius:999px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer">Batal</button>
+  <div class="card wide panel-section active" id="panel-accounts">
+    <p class="sub">Cari akun berdasarkan email atau nama, ubah status Premium, atau kelola akun.</p>
+
+    <div class="add-toolbar">
+      <button class="btn-add" onclick="toggleAddForm()">+ Tambah Akun</button>
     </div>
-  </div>
 
-  <div class="result-banner" id="result-banner" style="display:none"></div>
-
-  <input id="search" type="text" placeholder="Cari email atau nama..." oninput="onSearchInput()" />
-  <div class="error" id="app-error"></div>
-
-  <div class="tabs">
-    <div class="tab active" id="tab-active" onclick="switchTab(false)">Aktif</div>
-    <div class="tab" id="tab-trash" onclick="switchTab(true)">Sampah</div>
-  </div>
-
-  <div class="toolbar">
-    <label class="select-all">
-      <input type="checkbox" id="select-all-checkbox" onchange="onSelectAll(this.checked)" />
-      Pilih semua
-    </label>
-    <div class="toolbar-actions">
-      <button class="btn-export" id="export-selected-btn" onclick="exportSelected()" disabled>
-        Export Terpilih (0)
-      </button>
-      <button class="btn-export btn-export-all" onclick="exportAll()">Export Semua (.xlsx)</button>
+    <div class="panel" id="add-panel" style="display:none">
+      <h2>Tambah akun baru</h2>
+      <input id="new-name" type="text" placeholder="Nama" />
+      <input id="new-email" type="email" placeholder="Email" />
+      <input id="new-phone" type="text" placeholder="Nomor WhatsApp (opsional)" />
+      <input id="new-password" type="text" placeholder="Password (kosongkan untuk buat otomatis)" />
+      <select id="new-plan">
+        <option value="free">Free</option>
+        <option value="premium">Premium</option>
+      </select>
+      <div class="error" id="add-error"></div>
+      <div class="panel-actions">
+        <button class="btn-primary" id="add-submit-btn" onclick="submitAddUser()" style="width:auto;flex:1">Buat Akun</button>
+        <button class="btn-secondary" onclick="toggleAddForm()" style="border:none;border-radius:999px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer">Batal</button>
+      </div>
     </div>
-  </div>
-  <div id="list"></div>
-</div>
 
-<div class="card wide" id="promo-app" style="display:none">
-  <div class="top-row">
-    <h1>Rekomendasi Promo (Premium)</h1>
+    <div class="result-banner" id="result-banner" style="display:none"></div>
+
+    <input id="search" type="text" placeholder="Cari email atau nama..." oninput="onSearchInput()" />
+    <div class="error" id="app-error"></div>
+
+    <div class="tabs">
+      <div class="tab active" id="tab-active" onclick="switchTab(false)">Aktif</div>
+      <div class="tab" id="tab-trash" onclick="switchTab(true)">Sampah</div>
+    </div>
+
+    <div class="toolbar">
+      <label class="select-all">
+        <input type="checkbox" id="select-all-checkbox" onchange="onSelectAll(this.checked)" />
+        Pilih semua
+      </label>
+      <div class="toolbar-actions">
+        <button class="btn-export" id="export-selected-btn" onclick="exportSelected()" disabled>
+          Export Terpilih (0)
+        </button>
+        <button class="btn-export btn-export-all" onclick="exportAll()">Export Semua (.xlsx)</button>
+      </div>
+    </div>
+    <div id="list"></div>
   </div>
-  <p class="sub">
-    Isi promo langganan yang sudah kamu cek sendiri validitasnya — ini yang ditampilkan
-    di kartu terkunci Premium di beranda app. Kosong = kartu itu belum menampilkan apa-apa.
-  </p>
-  <div class="panel">
-    <h2>Tambah promo</h2>
-    <input id="promo-title" type="text" placeholder="Judul (mis. Netflix gratis 1 bulan)" />
-    <input id="promo-app-name" type="text" placeholder="Nama aplikasi (opsional)" />
-    <input id="promo-url" type="text" placeholder="Link (opsional)" />
-    <input id="promo-desc" type="text" placeholder="Deskripsi singkat" />
-    <div class="error" id="promo-error"></div>
-    <button class="btn-primary" id="promo-submit-btn" onclick="submitPromo()" style="width:auto">Tambah</button>
+
+  <div class="card wide panel-section" id="panel-promo">
+    <p class="sub">
+      Isi promo langganan yang sudah kamu cek sendiri validitasnya — ini yang ditampilkan
+      di kartu terkunci Premium di beranda app. Kosong = kartu itu belum menampilkan apa-apa.
+    </p>
+    <div class="panel">
+      <h2>Tambah promo</h2>
+      <input id="promo-title" type="text" placeholder="Judul (mis. Netflix gratis 1 bulan)" />
+      <input id="promo-app-name" type="text" placeholder="Nama aplikasi (opsional)" />
+      <input id="promo-url" type="text" placeholder="Link (opsional)" />
+      <input id="promo-desc" type="text" placeholder="Deskripsi singkat" />
+      <div class="error" id="promo-error"></div>
+      <button class="btn-primary" id="promo-submit-btn" onclick="submitPromo()" style="width:auto">Tambah</button>
+    </div>
+    <div id="promo-list"></div>
   </div>
-  <div id="promo-list"></div>
 </div>
 
 <script>
@@ -2540,8 +2589,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
       if (!res.ok) { errEl.textContent = data.detail || 'Gagal masuk'; return; }
       token = data.token;
       document.getElementById('login-card').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      document.getElementById('promo-app').style.display = 'block';
+      document.getElementById('shell').style.display = 'block';
       loadUsers('');
       loadPromos();
     } catch (e) {
@@ -2553,10 +2601,16 @@ ADMIN_PAGE_HTML = """<!doctype html>
 
   function logout() {
     token = null;
-    document.getElementById('app').style.display = 'none';
-    document.getElementById('promo-app').style.display = 'none';
+    document.getElementById('shell').style.display = 'none';
     document.getElementById('login-card').style.display = 'block';
     document.getElementById('password').value = '';
+  }
+
+  function switchMainTab(tab) {
+    document.getElementById('main-tab-accounts').classList.toggle('active', tab === 'accounts');
+    document.getElementById('main-tab-promo').classList.toggle('active', tab === 'promo');
+    document.getElementById('panel-accounts').classList.toggle('active', tab === 'accounts');
+    document.getElementById('panel-promo').classList.toggle('active', tab === 'promo');
   }
 
   function onSearchInput() {
@@ -2929,15 +2983,15 @@ ADMIN_PAGE_HTML = """<!doctype html>
       return;
     }
     list.innerHTML = promos.map((p) => (
-      '<div class="row">' +
-        '<div class="row-top">' +
-          '<div class="info">' +
-            '<div class="name">' + escapeHtml(p.title) + (p.app_name ? ' &middot; ' + escapeHtml(p.app_name) : '') + '</div>' +
-            '<div class="email">' + escapeHtml(p.description) + '</div>' +
+      '<div class="promo-row">' +
+        '<div class="promo-row-top">' +
+          '<div style="min-width:0">' +
+            '<div class="promo-title">' + escapeHtml(p.title) + (p.app_name ? ' &middot; ' + escapeHtml(p.app_name) : '') + '</div>' +
+            '<div class="promo-desc">' + escapeHtml(p.description) + '</div>' +
+            (p.url ? '<a class="promo-link" href="' + escapeHtml(p.url) + '" target="_blank" rel="noopener">' + escapeHtml(p.url) + '</a>' : '') +
           '</div>' +
           '<button class="btn-danger" data-id="' + p.id + '" onclick="deletePromo(this.getAttribute(&quot;data-id&quot;))">Hapus</button>' +
         '</div>' +
-        (p.url ? '<div class="row-meta">' + chip('Link', p.url) + '</div>' : '') +
       '</div>'
     )).join('');
   }
