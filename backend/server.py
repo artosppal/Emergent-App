@@ -1706,6 +1706,34 @@ def when_label(offset: int) -> str:
     return f"{offset} hari lagi (H-{offset})"
 
 
+def due_phrase(offset: int) -> str:
+    """Same relative-day wording as when_label() but without the '(H-3)'
+    suffix, since reminder_wa_message() already puts that in the headline."""
+    if offset <= 0:
+        return "hari ini"
+    if offset == 1:
+        return "besok"
+    return f"{offset} hari lagi"
+
+
+def h_label(offset: int) -> str:
+    if offset <= 0:
+        return "HARI INI"
+    if offset == 1:
+        return "BESOK"
+    return f"H-{offset}"
+
+
+def reminder_wa_message(item_name: str, amount: float, offset: int, note: str) -> str:
+    """Centralized WhatsApp reminder template. 🔔 MUST stay the very first
+    character — WhatsApp's chat-list/notification preview only shows ~40
+    chars, and a fixed signature emoji up front is what makes a Notifin
+    message recognizable before it's even opened. *bold* on the headline
+    makes it stand out against plain-text chats around it."""
+    return (f"🔔 *{h_label(offset)}: {item_name} {fmt_rp(amount)}*\n"
+            f"{note}\n\n_Notifin_ · {APP_URL}")
+
+
 async def claim_notif(key: str) -> bool:
     """Idempotency claim — returns False if this notification was already sent."""
     try:
@@ -1752,9 +1780,10 @@ async def reminder_sweep():
                 continue
             key = f"wa:personal:{s['id']}:{s['next_due_date']}:{offset}"
             if await claim_notif(key) and await consume_wa_quota(u):
-                msg = (f"Halo {u.get('name') or 'kamu'}! 🔔 Langganan {s['name']} kamu "
-                       f"{fmt_rp(s.get('price', 0))} jatuh tempo {when_label(offset)}. "
-                       f"Jangan lupa bayar atau cancel ya — Notifin\n{APP_URL}")
+                msg = reminder_wa_message(
+                    s["name"], s.get("price", 0), offset,
+                    f"Jatuh tempo {due_phrase(offset)}. Jangan lupa bayar atau cancel ya, "
+                    f"{u.get('name') or 'kamu'}.")
                 await send_whatsapp(u["phone"], msg)
 
     # Group subscriptions -> push to unpaid members, WA to eligible unpaid members.
@@ -1788,8 +1817,10 @@ async def reminder_sweep():
                     and member.get("phone")):
                 key = f"wa:group:{s['id']}:{s['next_due_date']}:{offset}:{uid}"
                 if await claim_notif(key) and await consume_wa_quota(member):
-                    msg = (f"Halo {member.get('name')}! 🔔 {body_text} "
-                           f"Jangan lupa bayar ya — Notifin\n{APP_URL}")
+                    msg = reminder_wa_message(
+                        s["name"], sp["amount"], offset,
+                        f"Bagianmu di grup \"{g['name']}\" jatuh tempo {due_phrase(offset)}. "
+                        f"Jangan lupa bayar ya, {member.get('name')}.")
                     await send_whatsapp(member["phone"], msg)
 
 
@@ -1869,9 +1900,10 @@ async def nudge_member(gid: str, sid: str, body: NudgeBody,
         logger.info(f"nudge push skipped: {e}")
     target = await db.users.find_one({"user_id": body.user_id}, {"_id": 0})
     if target and target.get("phone"):
-        res = await send_whatsapp(
-            target["phone"],
-            f"Halo {target.get('name')}! 👋 {user.get('name')} mengingatkan: {body_text} — Notifin\n{APP_URL}")
+        msg = (f"🔔 *{s['name']} {fmt_rp(sp['amount'])}*\n"
+               f"{user.get('name')} mengingatkan: {body_text}\n\n"
+               f"_Notifin_ · {APP_URL}")
+        res = await send_whatsapp(target["phone"], msg)
         if res.get("status"):
             channels.append("whatsapp")
     return {"status": "sent", "channels": channels, "wa_simulated": not wa_live()}
@@ -1899,9 +1931,14 @@ async def test_send_reminder(body: TestReminderBody, user: dict = Depends(get_cu
     if not user.get("phone"):
         raise HTTPException(status_code=422, detail="Nomor WhatsApp belum diatur di akun ini")
 
-    msg = (f"[TEST] Halo {user.get('name') or 'kamu'}! 🔔 Langganan {sub['name']} kamu "
-           f"{fmt_rp(sub.get('price', 0))} jatuh tempo tanggal {sub.get('next_due_date')}. "
-           f"Jangan lupa bayar atau cancel ya — Notifin\n{APP_URL}")
+    try:
+        offset = (date.fromisoformat(sub.get("next_due_date")) - date.today()).days
+    except Exception:
+        offset = 0
+    msg = "[TEST] " + reminder_wa_message(
+        sub["name"], sub.get("price", 0), offset,
+        f"Jatuh tempo {due_phrase(offset)}. Jangan lupa bayar atau cancel ya, "
+        f"{user.get('name') or 'kamu'}.")
     result = await send_whatsapp(user["phone"], msg)
     return {
         "status": "sent" if result.get("status") else "failed",
