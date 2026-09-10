@@ -1902,9 +1902,14 @@ async def nudge_member(gid: str, sid: str, body: NudgeBody,
         logger.info(f"nudge push skipped: {e}")
     target = await db.users.find_one({"user_id": body.user_id}, {"_id": 0})
     if target and target.get("phone"):
-        msg = (f"🔔 *{s['name']} {fmt_rp(sp['amount'])}*\n"
-               f"{user.get('name')} mengingatkan: {body_text}\n\n"
-               f"_Notifin_ · {APP_URL}")
+        try:
+            offset = (date.fromisoformat(s.get("next_due_date")) - date.today()).days
+        except Exception:
+            offset = 0
+        msg = reminder_wa_message(
+            s["name"], sp["amount"], offset,
+            f"{user.get('name')} mengingatkan bagianmu di grup \"{g['name']}\" "
+            f"belum dibayar. Yuk segera lunasi, {target.get('name')}!")
         res = await send_whatsapp(target["phone"], msg)
         if res.get("status"):
             channels.append("whatsapp")
