@@ -1708,7 +1708,7 @@ def when_label(offset: int) -> str:
 
 def due_phrase(offset: int) -> str:
     """Same relative-day wording as when_label() but without the '(H-3)'
-    suffix, since reminder_wa_message() already puts that in the headline."""
+    suffix, for use inside reminder_headline()."""
     if offset <= 0:
         return "hari ini"
     if offset == 1:
@@ -1716,22 +1716,25 @@ def due_phrase(offset: int) -> str:
     return f"{offset} hari lagi"
 
 
-def h_label(offset: int) -> str:
+def reminder_headline(item_name: str, amount: float, offset: int) -> str:
+    """Alert-style headline (not a flat 'H-3: name price' label) so the
+    ~40-char WhatsApp preview reads as a warning, not a data dump. Gets
+    more urgent — and folds in the price — as the due date approaches."""
     if offset <= 0:
-        return "HARI INI"
+        return f"HARI INI! {item_name} {fmt_rp(amount)} jatuh tempo"
     if offset == 1:
-        return "BESOK"
-    return f"H-{offset}"
+        return f"BESOK! {item_name} {fmt_rp(amount)} ditagih"
+    return f"{item_name} jatuh tempo {due_phrase(offset)}!"
 
 
 def reminder_wa_message(item_name: str, amount: float, offset: int, note: str) -> str:
-    """Centralized WhatsApp reminder template. 🔔 MUST stay the very first
-    character — WhatsApp's chat-list/notification preview only shows ~40
-    chars, and a fixed signature emoji up front is what makes a Notifin
-    message recognizable before it's even opened. *bold* on the headline
-    makes it stand out against plain-text chats around it."""
-    return (f"🔔 *{h_label(offset)}: {item_name} {fmt_rp(amount)}*\n"
-            f"{note}\n\n_Notifin_ · {APP_URL}")
+    """Centralized WhatsApp reminder template. 🔔 (always the same emoji —
+    that consistency is what makes it recognizable at a glance) MUST stay
+    the very first character, and *bold* on the headline makes it stand
+    out against plain-text chats around it."""
+    headline = reminder_headline(item_name, amount, offset)
+    body = note if offset <= 1 else f"{fmt_rp(amount)} — {note}"
+    return f"🔔 *{headline}*\n{body}\n\n_Notifin_ · {APP_URL}"
 
 
 async def claim_notif(key: str) -> bool:
@@ -1782,8 +1785,7 @@ async def reminder_sweep():
             if await claim_notif(key) and await consume_wa_quota(u):
                 msg = reminder_wa_message(
                     s["name"], s.get("price", 0), offset,
-                    f"Jatuh tempo {due_phrase(offset)}. Jangan lupa bayar atau cancel ya, "
-                    f"{u.get('name') or 'kamu'}.")
+                    f"Jangan lupa bayar atau cancel ya, {u.get('name') or 'kamu'}.")
                 await send_whatsapp(u["phone"], msg)
 
     # Group subscriptions -> push to unpaid members, WA to eligible unpaid members.
@@ -1819,8 +1821,8 @@ async def reminder_sweep():
                 if await claim_notif(key) and await consume_wa_quota(member):
                     msg = reminder_wa_message(
                         s["name"], sp["amount"], offset,
-                        f"Bagianmu di grup \"{g['name']}\" jatuh tempo {due_phrase(offset)}. "
-                        f"Jangan lupa bayar ya, {member.get('name')}.")
+                        f"Bagianmu di grup \"{g['name']}\" — jangan lupa bayar ya, "
+                        f"{member.get('name')}.")
                     await send_whatsapp(member["phone"], msg)
 
 
@@ -1937,8 +1939,7 @@ async def test_send_reminder(body: TestReminderBody, user: dict = Depends(get_cu
         offset = 0
     msg = "[TEST] " + reminder_wa_message(
         sub["name"], sub.get("price", 0), offset,
-        f"Jatuh tempo {due_phrase(offset)}. Jangan lupa bayar atau cancel ya, "
-        f"{user.get('name') or 'kamu'}.")
+        f"Jangan lupa bayar atau cancel ya, {user.get('name') or 'kamu'}.")
     result = await send_whatsapp(user["phone"], msg)
     return {
         "status": "sent" if result.get("status") else "failed",
