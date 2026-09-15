@@ -83,13 +83,16 @@ def email_live() -> bool:
 
 
 # Payment via Mayar.id (membership product "Notifin Premium").
-# All four stay empty until KYC is approved and you fill them in on Railway —
-# /auth/upgrade returns a clear "not configured yet" error until then, it
-# never falls back to the old dummy toggle.
+# Per Mayar's v2 docs (docs.mayar.id/api-reference-v2/membership/*), a single
+# membership tier can price several billing periods (1/3/6/12 months) — there
+# is no such thing as a separate "monthly tier" vs "yearly tier" ID. So we
+# only need ONE tier ID; "monthly" vs "yearly" is just membershipMonthlyPeriod
+# (1 vs 12) on the same tier. All three stay empty until KYC is approved and
+# you fill them in on Railway — /auth/upgrade returns a clear "not configured
+# yet" error until then, it never falls back to the old dummy toggle.
 MAYAR_API_KEY = os.environ.get("MAYAR_API_KEY", "")
 MAYAR_PRODUCT_ID = os.environ.get("MAYAR_PRODUCT_ID", "")
-MAYAR_TIER_MONTHLY_ID = os.environ.get("MAYAR_TIER_MONTHLY_ID", "")
-MAYAR_TIER_YEARLY_ID = os.environ.get("MAYAR_TIER_YEARLY_ID", "")
+MAYAR_TIER_ID = os.environ.get("MAYAR_TIER_ID", "")
 MAYAR_BASE_URL = "https://api.mayar.id"
 
 # Retention offers shown to a user about to downgrade — same "build ahead of
@@ -117,8 +120,7 @@ MAYAR_WEBHOOK_SECRET = os.environ.get("MAYAR_WEBHOOK_SECRET", "")
 
 def mayar_live() -> bool:
     return bool(
-        MAYAR_API_KEY.strip() and MAYAR_PRODUCT_ID.strip()
-        and MAYAR_TIER_MONTHLY_ID.strip() and MAYAR_TIER_YEARLY_ID.strip()
+        MAYAR_API_KEY.strip() and MAYAR_PRODUCT_ID.strip() and MAYAR_TIER_ID.strip()
     )
 
 app = FastAPI()
@@ -715,8 +717,8 @@ async def upgrade(body: UpgradeBody, user: dict = Depends(get_current_user)):
             status_code=503,
             detail="Pembayaran belum aktif — masih menunggu verifikasi KYC Mayar selesai.",
         )
-    tier_id = MAYAR_TIER_MONTHLY_ID if body.tier == "monthly" else MAYAR_TIER_YEARLY_ID
-    checkout_link = await mayar_create_checkout(user, tier_id)
+    months = 1 if body.tier == "monthly" else 12
+    checkout_link = await mayar_create_checkout(user, MAYAR_TIER_ID, months)
     if not checkout_link:
         raise HTTPException(
             status_code=502,
@@ -725,27 +727,30 @@ async def upgrade(body: UpgradeBody, user: dict = Depends(get_current_user)):
     return {"checkout_url": checkout_link}
 
 
-async def mayar_create_checkout(user: dict, tier_id: str) -> Optional[str]:
-    """Registers the user against a membership tier on Mayar, which — per
-    Mayar's docs — creates a pending member + associated payment link for
-    them to complete checkout. We only ever trust the webhook to actually
-    grant premium; this call's response is used purely to get a URL to send
-    the user to pay at.
-
-    NOTE: Mayar's public docs for non-credit membership products are thin
-    and, in places, inconsistent about the exact response shape here — this
-    checks every field name we found evidence for. If Mayar's real response
-    doesn't match any of them, this returns None and the raw response is
-    logged so it can be fixed from a real response body once KYC is done.
+async def mayar_create_checkout(user: dict, tier_id: str, months: int) -> Optional[str]:
+    """Two-step flow per Mayar's v2 docs (docs.mayar.id/api-reference-v2/
+    membership/register.md + .../createinvoice.md) — there is no checkout
+    link in the register response itself:
+      1. POST members/create -> registers a pending member, returns
+         data.membershipCustomer.memberId (and .id as a fallback — the docs
+         page and a real example response disagreed on which key is present).
+      2. POST members/{memberId}/invoice/create -> returns
+         data.membershipBillUrl, the actual URL to send the user to pay at.
+    We only ever trust the webhook to grant premium; this call's response is
+    used purely to get that URL. `months` must be 1, 3, 6, or 12 — it's
+    Mayar's membershipMonthlyPeriod, which picks which priced period on the
+    tier to bill (a single tier can price multiple periods; there's no such
+    thing as a separate "monthly tier" vs "yearly tier").
     """
+    headers = {
+        "Authorization": f"Bearer {MAYAR_API_KEY.strip()}",
+        "Content-Type": "application/json",
+    }
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as c:
             resp = await c.post(
                 f"{MAYAR_BASE_URL}/hl/v2/memberships/members/create",
-                headers={
-                    "Authorization": f"Bearer {MAYAR_API_KEY.strip()}",
-                    "Content-Type": "application/json",
-                },
+                headers=headers,
                 json={
                     "productId": MAYAR_PRODUCT_ID.strip(),
                     "membershipTierId": tier_id.strip(),
@@ -754,27 +759,37 @@ async def mayar_create_checkout(user: dict, tier_id: str) -> Optional[str]:
                         "email": user["email"],
                         "mobile": user.get("phone") or "-",
                     },
-                    "membershipMonthlyPeriod": 1,
+                    "membershipMonthlyPeriod": months,
                 },
             )
-        result = resp.json()
+            result = resp.json()
+            if resp.status_code >= 400:
+                logger.warning(f"Mayar member registration rejected ({resp.status_code}): {result}")
+                return None
+
+            member = (result.get("data") or {}).get("membershipCustomer") or result.get("membershipCustomer") or {}
+            member_id = member.get("memberId") or member.get("id")
+            if not member_id:
+                logger.warning(f"Mayar registration: no member id in response: {result}")
+                return None
+
+            resp = await c.post(
+                f"{MAYAR_BASE_URL}/hl/v2/memberships/members/{member_id}/invoice/create",
+                headers=headers,
+                json={"productId": MAYAR_PRODUCT_ID.strip()},
+            )
+            result = resp.json()
     except Exception as e:
         logger.warning(f"Mayar checkout request failed: {e}")
         return None
 
     if resp.status_code >= 400:
-        logger.warning(f"Mayar checkout rejected ({resp.status_code}): {result}")
+        logger.warning(f"Mayar invoice creation rejected ({resp.status_code}): {result}")
         return None
 
-    data = result.get("data", {}) or {}
-    member = data.get("membershipCustomer", data)
-    checkout_link = data.get("checkoutLink") or data.get("paymentLink") or member.get("checkoutLink")
+    checkout_link = (result.get("data") or {}).get("membershipBillUrl") or result.get("membershipBillUrl")
     if not checkout_link:
-        payment_link_id = member.get("paymentLinkId") or data.get("paymentLinkId")
-        if payment_link_id:
-            checkout_link = f"https://mayar.id/pl/checkout?product={payment_link_id}"
-    if not checkout_link:
-        logger.warning(f"Mayar checkout: no usable link in response: {result}")
+        logger.warning(f"Mayar invoice: no membershipBillUrl in response: {result}")
     return checkout_link
 
 
@@ -968,6 +983,9 @@ async def downgrade_feedback(body: DowngradeFeedbackBody, user: dict = Depends(g
     return {"status": "ok"}
 
 
+RETENTION_MONTHS = {"3m": 3, "6m": 6, "12m": 12}
+
+
 @api_router.post("/auth/downgrade/retention-offer")
 async def downgrade_retention_offer(body: RetentionOfferBody, user: dict = Depends(get_current_user)):
     tier_id = RETENTION_TIER_IDS.get(body.offer)
@@ -978,7 +996,7 @@ async def downgrade_retention_offer(body: RetentionOfferBody, user: dict = Depen
             status_code=503,
             detail="Penawaran ini belum aktif — masih menunggu verifikasi KYC Mayar selesai.",
         )
-    checkout_link = await mayar_create_checkout(user, tier_id)
+    checkout_link = await mayar_create_checkout(user, tier_id, RETENTION_MONTHS[body.offer])
     if not checkout_link:
         raise HTTPException(
             status_code=502,
