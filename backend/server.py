@@ -2301,6 +2301,57 @@ async def admin_purge_user(body: AdminConfirmEmailBody, _: None = Depends(requir
     return {"status": "ok"}
 
 
+class AdminEditTrashedContactBody(BaseModel):
+    user_id: str
+    email: Optional[str] = None  # omit/None = leave unchanged; "" = clear
+    phone: Optional[str] = None  # omit/None = leave unchanged; "" = clear
+
+
+@api_router.post("/admin/edit-trashed-contact")
+async def admin_edit_trashed_contact(body: AdminEditTrashedContactBody, _: None = Depends(require_admin)):
+    """A soft-deleted (Sampah) account keeps its email/phone forever, which
+    silently blocks that same email/phone from ever registering a new
+    account — none of the signup/admin-create duplicate checks look at
+    deleted_at. This lets an admin free up a trashed account's email and/or
+    phone (clear it or hand it to a different value) without having to
+    permanently purge the historical record itself. Only works on accounts
+    already in Sampah — for an active account, use /admin/purge-user or
+    have the user change it themselves."""
+    user = await db.users.find_one({"user_id": body.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    if not user.get("deleted_at"):
+        raise HTTPException(status_code=409, detail="Hanya bisa mengubah kontak akun yang ada di Sampah")
+
+    update: dict = {}
+    if body.email is not None:
+        email_norm = body.email.strip().lower()
+        if email_norm:
+            if await db.users.find_one({"email": email_norm, "user_id": {"$ne": body.user_id}}):
+                raise HTTPException(status_code=409, detail="Email itu sudah dipakai akun lain")
+            update["email"] = email_norm
+        else:
+            update["email"] = None
+    if body.phone is not None:
+        phone_raw = body.phone.strip()
+        if phone_raw:
+            try:
+                phone_norm = normalize_phone(phone_raw)
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid")
+            if await db.users.find_one({"phone": phone_norm, "user_id": {"$ne": body.user_id}}):
+                raise HTTPException(status_code=409, detail="Nomor itu sudah dipakai akun lain")
+            update["phone"] = phone_norm
+        else:
+            update["phone"] = None
+    if not update:
+        raise HTTPException(status_code=422, detail="Tidak ada perubahan yang dikirim")
+
+    await db.users.update_one({"user_id": body.user_id}, {"$set": update})
+    logger.info(f"Admin edited trashed contact: user={body.user_id} fields={list(update.keys())}")
+    return {"status": "ok"}
+
+
 class AdminPromoBody(BaseModel):
     title: str
     description: str
@@ -2970,6 +3021,36 @@ ADMIN_PAGE_HTML = """<!doctype html>
     }
   }
 
+  async function editContact(uid, currentEmail, currentPhone) {
+    const newEmail = prompt(
+      'Email untuk akun ini (kosongkan buat lepas email lama biar bisa dipakai akun lain):',
+      currentEmail || '',
+    );
+    if (newEmail === null) return;
+    const newPhone = prompt(
+      'Nomor WhatsApp untuk akun ini (kosongkan buat lepas nomor lama biar bisa dipakai akun lain):',
+      currentPhone || '',
+    );
+    if (newPhone === null) return;
+    if (newEmail.trim() === (currentEmail || '') && newPhone.trim() === (currentPhone || '')) return;
+    try {
+      const res = await fetch('/api/admin/edit-trashed-contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ user_id: uid, email: newEmail.trim(), phone: newPhone.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        alert(data.detail || 'Gagal mengubah kontak akun');
+        return;
+      }
+      loadUsers(document.getElementById('search').value);
+    } catch (e) {
+      alert('Tidak bisa menghubungi server.');
+    }
+  }
+
   function fmtDate(iso) {
     if (!iso) return '-';
     const d = new Date(iso);
@@ -3087,12 +3168,16 @@ ADMIN_PAGE_HTML = """<!doctype html>
       const checked = selected.has(u.user_id) ? 'checked' : '';
       const uidAttr = 'data-uid="' + u.user_id + '"';
       const emailAttr = 'data-email="' + escapeHtml(u.email || '').replace(/"/g, '&quot;') + '"';
+      const phoneAttr = 'data-phone="' + escapeHtml(u.phone || '').replace(/"/g, '&quot;') + '"';
       const getUid = 'this.getAttribute(&quot;data-uid&quot;)';
       const getEmail = 'this.getAttribute(&quot;data-email&quot;)';
+      const getPhone = 'this.getAttribute(&quot;data-phone&quot;)';
 
       const actions = showTrash
         ? (
             '<button class="btn-restore" ' + uidAttr + ' onclick="restoreUser(' + getUid + ')">Pulihkan</button>' +
+            '<button class="btn-toggle" ' + uidAttr + ' ' + emailAttr + ' ' + phoneAttr +
+              ' onclick="editContact(' + getUid + ',' + getEmail + ',' + getPhone + ')">Edit Kontak</button>' +
             '<button class="btn-purge" ' + uidAttr + ' ' + emailAttr + ' onclick="purgeUser(' + getUid + ',' + getEmail + ')">Hapus Permanen</button>'
           )
         : (
