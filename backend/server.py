@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -1229,13 +1229,92 @@ async def delete_subscription(sub_id: str, user: dict = Depends(get_current_user
 # Promo recommendations — a Premium-only perk shown as a locked card on the
 # dashboard. Content is entirely admin-curated (see /admin/promos below); the
 # app never invents or guesses at real promotions from other services.
+#
+# The destination URL is deliberately never sent to the client — /promos only
+# reports whether a link exists (has_link), and the app opens it through
+# /promos/{id}/go, which looks the URL up server-side and 302s to it. That
+# keeps the raw link out of the page source / API payload a viewer could
+# inspect. This endpoint is intentionally unauthenticated: promo ids are
+# opaque UUIDs only ever handed out via the Premium-gated list below, and a
+# plain <a>/Linking.openURL() navigation can't carry an Authorization header
+# anyway.
 # ---------------------------------------------------------------------------
 @api_router.get("/promos")
 async def list_promos(user: dict = Depends(get_current_user)):
     if user.get("plan") != "premium":
         raise HTTPException(status_code=403, detail="Fitur ini khusus akun Premium")
     docs = await db.promo_recommendations.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    for d in docs:
+        d["has_link"] = bool(d.pop("url", None))
     return {"promos": docs}
+
+
+@api_router.get("/promos/{promo_id}/go")
+async def go_to_promo(promo_id: str):
+    promo = await db.promo_recommendations.find_one({"id": promo_id}, {"_id": 0})
+    if not promo or not promo.get("url"):
+        raise HTTPException(status_code=404, detail="Promo tidak ditemukan")
+    return RedirectResponse(promo["url"])
+
+
+PROMO_REMIND_MAX_DAYS = 90
+
+
+class PromoRemindBody(BaseModel):
+    remind_at: str  # ISO datetime, in the future
+
+
+@api_router.post("/promos/{promo_id}/remind")
+async def remind_about_promo(promo_id: str, body: PromoRemindBody, user: dict = Depends(get_current_user)):
+    if user.get("plan") != "premium":
+        raise HTTPException(status_code=403, detail="Fitur ini khusus akun Premium")
+    promo = await db.promo_recommendations.find_one({"id": promo_id}, {"_id": 0})
+    if not promo:
+        raise HTTPException(status_code=404, detail="Promo tidak ditemukan")
+    try:
+        remind_dt = datetime.fromisoformat(body.remind_at.replace("Z", "+00:00"))
+        if remind_dt.tzinfo is None:
+            remind_dt = remind_dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Format waktu tidak valid")
+    now = now_utc()
+    if remind_dt <= now:
+        raise HTTPException(status_code=422, detail="Waktu pengingat harus di masa depan")
+    if remind_dt > now + timedelta(days=PROMO_REMIND_MAX_DAYS):
+        raise HTTPException(status_code=422, detail=f"Maksimal {PROMO_REMIND_MAX_DAYS} hari dari sekarang")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "promo_id": promo_id,
+        "promo_title": promo["title"],
+        "remind_at": remind_dt.isoformat(),
+        "sent": False,
+        "created_at": now.isoformat(),
+    }
+    await db.promo_reminders.insert_one(doc)
+    return {"status": "ok"}
+
+
+async def promo_reminder_sweep():
+    now_iso = now_utc().isoformat()
+    due = await db.promo_reminders.find(
+        {"sent": False, "remind_at": {"$lte": now_iso}}, {"_id": 0}
+    ).to_list(500)
+    for r in due:
+        user = await db.users.find_one({"user_id": r["user_id"]}, {"_id": 0})
+        if user and not user.get("deleted_at"):
+            title = f"🔔 Pengingat promo: {r['promo_title']}"
+            body_text = "Jangan lupa cek promo yang kamu simpan ini sebelum kelewatan!"
+            try:
+                await send_push([r["user_id"]], {"title": title, "message": body_text})
+            except Exception as e:
+                logger.info(f"promo reminder push skipped: {e}")
+            if user.get("notify_channels", {}).get("whatsapp") and user.get("phone"):
+                await send_whatsapp(
+                    user["phone"],
+                    f"{title}\n{body_text}\n\n_Notifin_ · {APP_URL}",
+                )
+        await db.promo_reminders.update_one({"id": r["id"]}, {"$set": {"sent": True}})
 
 
 # ---------------------------------------------------------------------------
@@ -1875,6 +1954,10 @@ async def scheduler_loop():
             await expire_premiums_sweep()
         except Exception as e:
             logger.warning(f"premium expiry sweep failed: {e}")
+        try:
+            await promo_reminder_sweep()
+        except Exception as e:
+            logger.warning(f"promo reminder sweep failed: {e}")
         await asyncio.sleep(1800)
 
 
@@ -3454,6 +3537,8 @@ async def startup():
         await db.spending_snapshots.create_index(
             [("user_id", 1), ("period", 1)], unique=True)
         await db.mayar_webhook_log.create_index("received_at")
+        await db.promo_reminders.create_index([("sent", 1), ("remind_at", 1)])
+        await db.promo_reminders.create_index("user_id")
     except Exception as e:
         logger.warning(f"index creation: {e}")
     asyncio.create_task(scheduler_loop())

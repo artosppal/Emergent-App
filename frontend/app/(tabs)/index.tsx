@@ -8,6 +8,8 @@ import {
   Pressable,
   ActivityIndicator,
   Linking,
+  Modal,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -15,10 +17,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/context/AuthContext";
 import { useUpgrade } from "@/src/context/UpgradeContext";
 import { useLanguage } from "@/src/context/LanguageContext";
+import { useToast } from "@/src/context/ToastContext";
 import { SubscriptionCard, Subscription, CategoryLogo } from "@/src/components/SubscriptionCard";
 import { SectionTitle, EmptyState, Button } from "@/src/components/ui";
 import { getCategory } from "@/src/constants/categories";
@@ -29,8 +33,30 @@ interface PromoItem {
   title: string;
   description: string;
   app_name?: string | null;
-  url?: string | null;
+  has_link?: boolean;
 }
+
+// "YYYY-MM-DDTHH:mm" in LOCAL time, the format <input type="datetime-local">
+// needs — toISOString() would shift to UTC and desync the min= guard from
+// what the picker itself is showing.
+function toLocalDateTimeInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Style for the real HTML <input type="datetime-local"> used on web to pick
+// a custom reminder time — a raw DOM node, so it needs plain CSS.
+const webDateTimeInputStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  border: "none",
+  outline: "none",
+  background: "transparent",
+  fontFamily: font.semibold,
+  fontSize: fontSize.base,
+  color: colors.onSurface,
+  padding: 0,
+};
 
 interface DashboardData {
   total_this_month: number;
@@ -51,6 +77,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { showUpgrade } = useUpgrade();
   const { t } = useLanguage();
+  const toast = useToast();
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,6 +85,47 @@ export default function Dashboard() {
   const [promoOpen, setPromoOpen] = useState(false);
   const [promos, setPromos] = useState<PromoItem[] | null>(null);
   const [promoLoading, setPromoLoading] = useState(false);
+
+  const [remindPromoId, setRemindPromoId] = useState<string | null>(null);
+  const [remindCustomValue, setRemindCustomValue] = useState("");
+  const [remindNativeStep, setRemindNativeStep] = useState<"date" | "time" | null>(null);
+  const [remindNativeDate, setRemindNativeDate] = useState(new Date());
+
+  const openPromo = (id: string) => {
+    Linking.openURL(api.promoGoUrl(id));
+  };
+
+  const scheduleRemind = async (promoId: string, when: Date) => {
+    setRemindPromoId(null);
+    setRemindCustomValue("");
+    try {
+      await api.promoRemind(promoId, when.toISOString());
+      toast.show(t("dashboard.promoRemindSet"), "success");
+    } catch (e: any) {
+      toast.show(
+        e?.status === 422 ? t("dashboard.promoRemindErrPast") : t("dashboard.promoRemindErr"),
+        "error",
+      );
+    }
+  };
+
+  const remindInHours = (hours: number) => {
+    if (!remindPromoId) return;
+    scheduleRemind(remindPromoId, new Date(Date.now() + hours * 3600 * 1000));
+  };
+
+  const remindTomorrowAt = (hour: number) => {
+    if (!remindPromoId) return;
+    const when = new Date();
+    when.setDate(when.getDate() + 1);
+    when.setHours(hour, 0, 0, 0);
+    scheduleRemind(remindPromoId, when);
+  };
+
+  const remindCustomWeb = () => {
+    if (!remindPromoId || !remindCustomValue) return;
+    scheduleRemind(remindPromoId, new Date(remindCustomValue));
+  };
 
   const togglePromo = async () => {
     const next = !promoOpen;
@@ -130,6 +198,7 @@ export default function Dashboard() {
         : [colors.brand, colors.brandDark];
 
   return (
+    <>
     <ScrollView
       style={styles.root}
       contentContainerStyle={{ paddingTop: insets.top + spacing.md, paddingBottom: tabH + spacing.xl }}
@@ -229,18 +298,36 @@ export default function Dashboard() {
                 ) : promos && promos.length > 0 ? (
                   promos.map((p) => (
                     <View key={p.id} style={styles.promoItem}>
-                      <Text style={styles.promoItemTitle}>
-                        {p.title}
-                        {p.app_name ? ` · ${p.app_name}` : ""}
-                      </Text>
+                      <View style={styles.promoItemTitleRow}>
+                        <Text style={styles.promoItemTitle}>
+                          {p.title}
+                          {p.app_name ? ` · ${p.app_name}` : ""}
+                        </Text>
+                        <View style={styles.promoSponsoredBadge}>
+                          <Text style={styles.promoSponsoredBadgeText}>{t("dashboard.promoLabel")}</Text>
+                        </View>
+                      </View>
                       <Text style={styles.promoItemDesc}>{p.description}</Text>
-                      {!!p.url && (
-                        <Pressable onPress={() => Linking.openURL(p.url!)}>
-                          <Text style={styles.promoItemLink} numberOfLines={1}>
-                            {p.url}
-                          </Text>
+                      <View style={styles.promoActionRow}>
+                        {!!p.has_link && (
+                          <Pressable
+                            testID={`promo-join-${p.id}`}
+                            style={styles.promoJoinBtn}
+                            onPress={() => openPromo(p.id)}
+                          >
+                            <MaterialCommunityIcons name="open-in-new" size={14} color="#fff" />
+                            <Text style={styles.promoJoinBtnText}>{t("dashboard.promoJoinAction")}</Text>
+                          </Pressable>
+                        )}
+                        <Pressable
+                          testID={`promo-remind-${p.id}`}
+                          style={styles.promoRemindBtn}
+                          onPress={() => setRemindPromoId(p.id)}
+                        >
+                          <MaterialCommunityIcons name="bell-outline" size={14} color="#B45309" />
+                          <Text style={styles.promoRemindBtnText}>{t("dashboard.promoRemindAction")}</Text>
                         </Pressable>
-                      )}
+                      </View>
                     </View>
                   ))
                 ) : (
@@ -404,6 +491,119 @@ export default function Dashboard() {
         </>
       )}
     </ScrollView>
+
+    {/* Promo reminder time picker */}
+    <Modal
+      visible={!!remindPromoId}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setRemindPromoId(null)}
+    >
+      <Pressable style={styles.backdrop} onPress={() => setRemindPromoId(null)}>
+        <Pressable style={styles.modalCard} onPress={() => {}}>
+          <Text style={styles.modalTitle}>{t("dashboard.promoRemindTitle")}</Text>
+          <Text style={styles.modalSub}>{t("dashboard.promoRemindSub")}</Text>
+
+          <Pressable testID="remind-1h" style={styles.remindOption} onPress={() => remindInHours(1)}>
+            <MaterialCommunityIcons name="clock-outline" size={18} color={colors.brand} />
+            <Text style={styles.remindOptionText}>{t("dashboard.promoRemind1h")}</Text>
+          </Pressable>
+          <Pressable testID="remind-3h" style={styles.remindOption} onPress={() => remindInHours(3)}>
+            <MaterialCommunityIcons name="clock-outline" size={18} color={colors.brand} />
+            <Text style={styles.remindOptionText}>{t("dashboard.promoRemind3h")}</Text>
+          </Pressable>
+          <Pressable testID="remind-6h" style={styles.remindOption} onPress={() => remindInHours(6)}>
+            <MaterialCommunityIcons name="clock-outline" size={18} color={colors.brand} />
+            <Text style={styles.remindOptionText}>{t("dashboard.promoRemind6h")}</Text>
+          </Pressable>
+          <Pressable
+            testID="remind-tomorrow-morning"
+            style={styles.remindOption}
+            onPress={() => remindTomorrowAt(8)}
+          >
+            <MaterialCommunityIcons name="weather-sunset-up" size={18} color={colors.brand} />
+            <Text style={styles.remindOptionText}>{t("dashboard.promoRemindTomorrowMorning")}</Text>
+          </Pressable>
+          <Pressable
+            testID="remind-tomorrow-night"
+            style={styles.remindOption}
+            onPress={() => remindTomorrowAt(20)}
+          >
+            <MaterialCommunityIcons name="weather-night" size={18} color={colors.brand} />
+            <Text style={styles.remindOptionText}>{t("dashboard.promoRemindTomorrowNight")}</Text>
+          </Pressable>
+
+          {Platform.OS === "web" ? (
+            <View style={styles.remindCustomWebRow}>
+              <MaterialCommunityIcons name="calendar-clock" size={18} color={colors.brand} />
+              {/* Real HTML datetime input (not RN's TextInput) — same reason
+                  as the due-date picker in subscription/form.tsx. */}
+              <input
+                data-testid="remind-custom-input"
+                type="datetime-local"
+                value={remindCustomValue}
+                min={toLocalDateTimeInput(new Date())}
+                onChange={(e) => setRemindCustomValue(e.target.value)}
+                style={webDateTimeInputStyle}
+              />
+              <Pressable
+                testID="remind-custom-go"
+                style={styles.remindCustomGo}
+                onPress={remindCustomWeb}
+              >
+                <MaterialCommunityIcons name="check" size={18} color="#fff" />
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              testID="remind-custom"
+              style={styles.remindOption}
+              onPress={() => {
+                setRemindNativeDate(new Date());
+                setRemindNativeStep("date");
+              }}
+            >
+              <MaterialCommunityIcons name="calendar-clock" size={18} color={colors.brand} />
+              <Text style={styles.remindOptionText}>{t("dashboard.promoRemindCustom")}</Text>
+            </Pressable>
+          )}
+
+          <Pressable style={styles.cancelBtn} onPress={() => setRemindPromoId(null)}>
+            <Text style={styles.cancelText}>{t("common.cancel")}</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    {Platform.OS !== "web" && remindNativeStep === "date" && (
+      <DateTimePicker
+        value={remindNativeDate}
+        mode="date"
+        display={Platform.OS === "ios" ? "inline" : "default"}
+        minimumDate={new Date()}
+        onChange={(event, date) => {
+          setRemindNativeStep(null);
+          if (event.type === "dismissed" || !date) return;
+          setRemindNativeDate(date);
+          setRemindNativeStep("time");
+        }}
+      />
+    )}
+    {Platform.OS !== "web" && remindNativeStep === "time" && (
+      <DateTimePicker
+        value={remindNativeDate}
+        mode="time"
+        display={Platform.OS === "ios" ? "spinner" : "default"}
+        onChange={(event, time) => {
+          setRemindNativeStep(null);
+          if (event.type === "dismissed" || !time || !remindPromoId) return;
+          const combined = new Date(remindNativeDate);
+          combined.setHours(time.getHours(), time.getMinutes(), 0, 0);
+          scheduleRemind(remindPromoId, combined);
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -518,9 +718,22 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
   },
-  promoItemTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: "#78350F" },
+  promoItemTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  promoItemTitle: { flex: 1, fontFamily: font.bold, fontSize: fontSize.base, color: "#78350F" },
+  promoSponsoredBadge: {
+    backgroundColor: "rgba(146,64,14,0.12)",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
+  promoSponsoredBadgeText: {
+    fontFamily: font.bold,
+    fontSize: 10,
+    color: "#92400E",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
   promoItemDesc: { fontFamily: font.regular, fontSize: fontSize.sm, color: "#92400E", marginTop: 2, lineHeight: 19 },
-  promoItemLink: { fontFamily: font.semibold, fontSize: fontSize.sm, color: "#B45309", marginTop: spacing.xs },
   promoEmptyTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: "#92400E" },
   promoEmptySub: {
     fontFamily: font.regular,
@@ -528,6 +741,77 @@ const styles = StyleSheet.create({
     color: "#B45309",
     marginTop: 2,
     textAlign: "center",
+  },
+  promoActionRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
+  promoJoinBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#B45309",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+  },
+  promoJoinBtnText: { fontFamily: font.bold, fontSize: fontSize.sm, color: "#fff" },
+  promoRemindBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+  },
+  promoRemindBtnText: { fontFamily: font.bold, fontSize: fontSize.sm, color: "#B45309" },
+
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(24,41,36,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+  },
+  modalTitle: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: colors.onSurface },
+  modalSub: {
+    fontFamily: font.regular,
+    fontSize: fontSize.base,
+    color: colors.muted,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  cancelBtn: { alignItems: "center", paddingVertical: spacing.md, marginTop: spacing.sm },
+  cancelText: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.muted },
+  remindOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.surfaceTertiary,
+  },
+  remindOptionText: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurface },
+  remindCustomWebRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  remindCustomGo: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brand,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   promoLockedCard: {

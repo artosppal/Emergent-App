@@ -103,6 +103,9 @@ export const api = {
 
   dashboard: () => apiFetch("/dashboard"),
   promos: () => apiFetch("/promos"),
+  promoGoUrl: (id: string) => `${BASE}/api/promos/${id}/go`,
+  promoRemind: (id: string, remind_at: string) =>
+    apiFetch(`/promos/${id}/remind`, { method: "POST", body: JSON.stringify({ remind_at }) }),
   whatsNew: () => apiFetch("/whats-new"),
   spendingHistory: (range: "monthly" | "yearly") =>
     apiFetch(`/analytics/spending?range=${range}`),
