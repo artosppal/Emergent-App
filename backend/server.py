@@ -2135,9 +2135,23 @@ async def admin_list_users(query: str = "", trash: bool = False, _: None = Depen
     return {"users": await enrich_users(docs)}
 
 
+MAX_MANUAL_PREMIUM_DAYS = 3650  # 10 years — sanity cap on admin-granted durations
+
+
+def resolve_premium_days(duration_days: Optional[int]) -> int:
+    if duration_days is None:
+        return DEFAULT_PREMIUM_DAYS
+    if duration_days < 1 or duration_days > MAX_MANUAL_PREMIUM_DAYS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Durasi harus antara 1 dan {MAX_MANUAL_PREMIUM_DAYS} hari")
+    return duration_days
+
+
 class AdminSetPlanBody(BaseModel):
     user_id: str
     plan: str  # "free" | "premium"
+    duration_days: Optional[int] = None  # premium only; default DEFAULT_PREMIUM_DAYS
 
 
 @api_router.post("/admin/set-plan")
@@ -2146,10 +2160,12 @@ async def admin_set_plan(body: AdminSetPlanBody, _: None = Depends(require_admin
         raise HTTPException(status_code=422, detail='plan harus "free" atau "premium"')
     update: dict = {"plan": body.plan}
     if body.plan == "premium":
-        # Manual grants from this panel always run 30 days from the moment
-        # you click — there's no real Mayar expiry date to use here.
+        # Manual grants from this panel run for however many days the admin
+        # picked (default DEFAULT_PREMIUM_DAYS) from the moment you click —
+        # there's no real Mayar expiry date to use here.
+        days = resolve_premium_days(body.duration_days)
         update["premium_since"] = now_utc().isoformat()
-        update["premium_expires_at"] = (now_utc() + timedelta(days=DEFAULT_PREMIUM_DAYS)).isoformat()
+        update["premium_expires_at"] = (now_utc() + timedelta(days=days)).isoformat()
     else:
         update["premium_expires_at"] = None
     res = await db.users.update_one({"user_id": body.user_id}, {"$set": update})
@@ -2165,6 +2181,7 @@ class AdminCreateUserBody(BaseModel):
     phone: Optional[str] = None
     password: Optional[str] = None  # blank = a random one is generated
     plan: str = "free"
+    duration_days: Optional[int] = None  # premium only; default DEFAULT_PREMIUM_DAYS
 
 
 @api_router.post("/admin/create-user")
@@ -2201,8 +2218,9 @@ async def admin_create_user(body: AdminCreateUserBody, _: None = Depends(require
         "created_at": now_utc().isoformat(),
     }
     if body.plan == "premium":
+        days = resolve_premium_days(body.duration_days)
         user["premium_since"] = now_utc().isoformat()
-        user["premium_expires_at"] = (now_utc() + timedelta(days=DEFAULT_PREMIUM_DAYS)).isoformat()
+        user["premium_expires_at"] = (now_utc() + timedelta(days=days)).isoformat()
     await db.users.insert_one(user)
     logger.info(f"Admin created user: {email_norm}")
     return {"user": public_user(user), "temp_password": temp_password}
@@ -2514,6 +2532,15 @@ ADMIN_PAGE_HTML = """<!doctype html>
     width: 100%; padding: 12px 14px; border-radius: 12px; border: 1.5px solid #D1D5DB;
     font-size: 15px; margin-bottom: 12px; background: #fff; outline: none;
   }
+  .duration-row { display: none; margin: -6px 0 12px; }
+  .duration-row.show { display: block; }
+  .duration-chips { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .duration-chip {
+    background: #E8F0EC; color: #182924; font-size: 12px; font-weight: 700;
+    padding: 7px 13px; border-radius: 999px; border: none; cursor: pointer;
+  }
+  .duration-chip:hover { background: #D1FAE5; }
+  .duration-chip.active { background: #059669; color: #fff; }
   select:focus { border-color: #059669; }
   .tabs { display: flex; gap: 6px; margin: 4px 0 12px; }
   .tab {
@@ -2616,10 +2643,19 @@ ADMIN_PAGE_HTML = """<!doctype html>
       <input id="new-email" type="email" placeholder="Email" />
       <input id="new-phone" type="text" placeholder="Nomor WhatsApp (opsional)" />
       <input id="new-password" type="text" placeholder="Password (kosongkan untuk buat otomatis)" />
-      <select id="new-plan">
+      <select id="new-plan" onchange="onNewPlanChange()">
         <option value="free">Free</option>
         <option value="premium">Premium</option>
       </select>
+      <div class="duration-row" id="new-duration-row">
+        <input id="new-duration-days" type="number" min="1" placeholder="Durasi Premium (hari), kosongkan = 30 hari" />
+        <div class="duration-chips">
+          <button type="button" class="duration-chip" onclick="setNewDuration(30)">1 Bulan</button>
+          <button type="button" class="duration-chip" onclick="setNewDuration(90)">3 Bulan</button>
+          <button type="button" class="duration-chip" onclick="setNewDuration(180)">6 Bulan</button>
+          <button type="button" class="duration-chip" onclick="setNewDuration(365)">1 Tahun</button>
+        </div>
+      </div>
       <div class="error" id="add-error"></div>
       <div class="panel-actions">
         <button class="btn-primary" id="add-submit-btn" onclick="submitAddUser()" style="width:auto;flex:1">Buat Akun</button>
@@ -2777,11 +2813,21 @@ ADMIN_PAGE_HTML = """<!doctype html>
     panel.style.display = opening ? 'block' : 'none';
     document.getElementById('add-error').textContent = '';
     if (opening) {
-      ['new-name', 'new-email', 'new-phone', 'new-password'].forEach((id) => {
+      ['new-name', 'new-email', 'new-phone', 'new-password', 'new-duration-days'].forEach((id) => {
         document.getElementById(id).value = '';
       });
       document.getElementById('new-plan').value = 'free';
+      onNewPlanChange();
     }
+  }
+
+  function onNewPlanChange() {
+    document.getElementById('new-duration-row')
+      .classList.toggle('show', document.getElementById('new-plan').value === 'premium');
+  }
+
+  function setNewDuration(days) {
+    document.getElementById('new-duration-days').value = days;
   }
 
   async function submitAddUser() {
@@ -2790,16 +2836,25 @@ ADMIN_PAGE_HTML = """<!doctype html>
     const phone = document.getElementById('new-phone').value.trim();
     const password = document.getElementById('new-password').value.trim();
     const plan = document.getElementById('new-plan').value;
+    const durationRaw = document.getElementById('new-duration-days').value.trim();
     const errEl = document.getElementById('add-error');
     const btn = document.getElementById('add-submit-btn');
     errEl.textContent = '';
     if (!name || !email) { errEl.textContent = 'Nama dan email wajib diisi'; return; }
+    let duration_days = null;
+    if (plan === 'premium' && durationRaw) {
+      duration_days = parseInt(durationRaw, 10);
+      if (!Number.isInteger(duration_days) || duration_days < 1) {
+        errEl.textContent = 'Durasi Premium harus angka hari yang valid';
+        return;
+      }
+    }
     btn.disabled = true;
     try {
       const res = await fetch('/api/admin/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ name, email, phone: phone || null, password: password || null, plan }),
+        body: JSON.stringify({ name, email, phone: phone || null, password: password || null, plan, duration_days }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -3052,6 +3107,17 @@ ADMIN_PAGE_HTML = """<!doctype html>
   async function togglePlan(btn) {
     const userId = btn.getAttribute('data-uid');
     const plan = btn.getAttribute('data-plan');
+    let duration_days = null;
+    if (plan === 'premium') {
+      const input = prompt(
+        'Durasi Premium dalam hari (30 = 1 bulan, 90 = 3 bulan, 180 = 6 bulan, 365 = 1 tahun):', '30');
+      if (input === null) return;
+      duration_days = parseInt(input, 10);
+      if (!Number.isInteger(duration_days) || duration_days < 1) {
+        alert('Durasi tidak valid.');
+        return;
+      }
+    }
     btn.disabled = true;
     const original = btn.textContent;
     btn.textContent = 'Menyimpan...';
@@ -3059,7 +3125,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
       const res = await fetch('/api/admin/set-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ user_id: userId, plan }),
+        body: JSON.stringify({ user_id: userId, plan, duration_days }),
       });
       const data = await res.json();
       if (!res.ok) {
