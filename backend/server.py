@@ -727,6 +727,32 @@ async def upgrade(body: UpgradeBody, user: dict = Depends(get_current_user)):
     return {"checkout_url": checkout_link}
 
 
+async def mayar_find_existing_member(c: httpx.AsyncClient, headers: dict, email: str, tier_id: str) -> Optional[str]:
+    """Mayar has no upsert on members/create — a customer who abandoned an
+    earlier checkout (or is renewing) gets an unconditional 400 'Email sudah
+    terdaftar pada tier ini' on every retry, with no way to recover, unless
+    we look up their existing registration and reuse it. Per
+    docs.mayar.id/api-reference-v2/membership/members.md."""
+    try:
+        resp = await c.get(
+            f"{MAYAR_BASE_URL}/hl/v2/memberships/members",
+            headers=headers,
+            params={"productId": MAYAR_PRODUCT_ID.strip(), "searchTerm": email, "limit": 50},
+        )
+        result = resp.json()
+    except Exception as e:
+        logger.warning(f"Mayar member lookup failed: {e}")
+        return None
+    if resp.status_code >= 400:
+        logger.warning(f"Mayar member lookup rejected ({resp.status_code}): {result}")
+        return None
+    for m in (result.get("data") or []):
+        customer = m.get("customer") or {}
+        if m.get("membershipTierId") == tier_id and (customer.get("email") or "").lower() == email.lower():
+            return m.get("memberId") or m.get("id")
+    return None
+
+
 async def mayar_create_checkout(user: dict, tier_id: str, months: int) -> Optional[str]:
     """Two-step flow per Mayar's v2 docs (docs.mayar.id/api-reference-v2/
     membership/register.md + .../createinvoice.md) — there is no checkout
@@ -734,6 +760,9 @@ async def mayar_create_checkout(user: dict, tier_id: str, months: int) -> Option
       1. POST members/create -> registers a pending member, returns
          data.membershipCustomer.memberId (and .id as a fallback — the docs
          page and a real example response disagreed on which key is present).
+         If Mayar rejects this because the customer already has a
+         registration on this tier, mayar_find_existing_member() looks up
+         their existing member id instead of failing outright.
       2. POST members/{memberId}/invoice/create -> returns
          data.membershipBillUrl, the actual URL to send the user to pay at.
     We only ever trust the webhook to grant premium; this call's response is
@@ -763,15 +792,19 @@ async def mayar_create_checkout(user: dict, tier_id: str, months: int) -> Option
                 },
             )
             result = resp.json()
+            member_id = None
             if resp.status_code >= 400:
                 logger.warning(f"Mayar member registration rejected ({resp.status_code}): {result}")
-                return None
-
-            member = (result.get("data") or {}).get("membershipCustomer") or result.get("membershipCustomer") or {}
-            member_id = member.get("memberId") or member.get("id")
-            if not member_id:
-                logger.warning(f"Mayar registration: no member id in response: {result}")
-                return None
+                if "sudah terdaftar" in str(result.get("message", "")).lower():
+                    member_id = await mayar_find_existing_member(c, headers, user["email"], tier_id.strip())
+                if not member_id:
+                    return None
+            else:
+                member = (result.get("data") or {}).get("membershipCustomer") or result.get("membershipCustomer") or {}
+                member_id = member.get("memberId") or member.get("id")
+                if not member_id:
+                    logger.warning(f"Mayar registration: no member id in response: {result}")
+                    return None
 
             resp = await c.post(
                 f"{MAYAR_BASE_URL}/hl/v2/memberships/members/{member_id}/invoice/create",
