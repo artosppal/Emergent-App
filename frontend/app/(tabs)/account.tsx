@@ -156,15 +156,25 @@ export default function Account() {
 
   const takeRetentionOffer = async (offer: "3m" | "6m" | "12m") => {
     setOfferBusy(offer);
+    // Same popup-blocker issue as the main upgrade flow: open the tab
+    // synchronously (still inside this click's user-gesture) and fill in
+    // its location once the checkout URL comes back from the awaited call.
+    const popup = Platform.OS === "web" ? window.open("", "_blank") : null;
     try {
       const res: any = await api.retentionOffer(offer);
       if (res.checkout_url) {
         closeDowngradeFlow();
-        await Linking.openURL(res.checkout_url);
+        if (popup) {
+          popup.location.href = res.checkout_url;
+        } else {
+          await Linking.openURL(res.checkout_url);
+        }
       } else {
+        popup?.close();
         toast.show(t("downgradeFlow.errOffer"), "error");
       }
     } catch (e) {
+      popup?.close();
       if (e instanceof ApiError && e.status === 503) {
         toast.show(e.message, "info");
       } else {

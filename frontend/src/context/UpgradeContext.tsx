@@ -72,15 +72,28 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
 
   const doUpgrade = useCallback(async () => {
     setUpgrading(true);
+    // On web, open a blank tab synchronously — while we're still inside the
+    // click's user-gesture context — and fill in its location once the
+    // checkout URL comes back. Opening the tab only after the awaited
+    // /auth/upgrade call (as Linking.openURL would) falls outside that
+    // window, so popup blockers (Safari, Opera, Firefox strict mode) block
+    // it as an unsolicited popup instead of a navigation.
+    const popup = Platform.OS === "web" ? window.open("", "_blank") : null;
     try {
       const res: any = await api.upgrade(tier);
       if (res.checkout_url) {
         ref.current?.dismiss();
-        await Linking.openURL(res.checkout_url);
+        if (popup) {
+          popup.location.href = res.checkout_url;
+        } else {
+          await Linking.openURL(res.checkout_url);
+        }
       } else {
+        popup?.close();
         toast.show(t("upgrade.errToast"), "error");
       }
     } catch (e) {
+      popup?.close();
       if (e instanceof ApiError && e.status === 400 && (e.detail as any)?.code === "phone_not_verified") {
         setPhoneInput(user?.phone || "");
         setStep("phone");
