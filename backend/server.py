@@ -1084,6 +1084,14 @@ class ChannelsBody(BaseModel):
 
 @api_router.put("/auth/channels")
 async def update_channels(body: ChannelsBody, user: dict = Depends(get_current_user)):
+    if body.whatsapp and not user.get("phone_verified"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "phone_not_verified",
+                "message": "Verifikasi nomor WhatsApp dulu sebelum mengaktifkan notifikasi WhatsApp.",
+            },
+        )
     await db.users.update_one({"user_id": user["user_id"]},
                               {"$set": {"notify_channels": body.model_dump()}})
     updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
@@ -2767,6 +2775,9 @@ ADMIN_PAGE_HTML = """<!doctype html>
   .chip-warn .chip-label { color: #B45309; }
   .chip-danger { background: #FEF2F2; color: #991B1B; }
   .chip-danger .chip-label { color: #DC2626; }
+  .row-survey { margin-top: 4px; padding-top: 10px; border-top: 1px dashed #E5E7EB; }
+  .chip-survey { background: #EEF2FF; color: #3730A3; }
+  .chip-survey .chip-label { color: #4F46E5; }
   #app { display: none; }
   .top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
   .logout { background: none; color: #6B7280; font-weight: 600; padding: 4px; }
@@ -2986,6 +2997,23 @@ ADMIN_PAGE_HTML = """<!doctype html>
   let selected = new Set();
   let currentUsers = [];
   let showTrash = false;
+
+  // Mirrors ONBOARDING_USE_CASE_LABELS / ONBOARDING_REFERRAL_LABELS /
+  // ONBOARDING_GOAL_LABELS in server.py — the /admin/users response sends
+  // raw survey codes, not labels, so this is what turns e.g. "personal"
+  // into "Pribadi" for on-screen display (the Excel export does the same
+  // translation server-side).
+  const ONBOARDING_USE_CASE_LABELS = {
+    personal: 'Pribadi', shared: 'Bareng keluarga/teman', exploring: 'Masih coba-coba',
+  };
+  const ONBOARDING_REFERRAL_LABELS = {
+    instagram: 'Instagram', tiktok: 'TikTok', google: 'Google Search', friend: 'Teman/keluarga',
+    play_store: 'Play Store', app_store: 'App Store', other: 'Lainnya',
+  };
+  const ONBOARDING_GOAL_LABELS = {
+    avoid_forgotten_trials: 'Jangan sampai lupa cancel trial', track_spending: 'Pantau pengeluaran bulanan',
+    split_with_family: 'Bagi tagihan bareng keluarga/teman', other: 'Lainnya',
+  };
 
   async function login() {
     const password = document.getElementById('password').value;
@@ -3355,6 +3383,16 @@ ADMIN_PAGE_HTML = """<!doctype html>
       meta += chip('Langganan', u.subscription_count);
       meta += chip('Aktif', lastActiveText(u.last_active_at));
       if (showTrash) meta += chip('Dihapus', fmtDate(u.deleted_at), 'chip-danger');
+
+      const hasSurvey = u.onboarding_use_case || u.onboarding_sub_range ||
+        u.onboarding_referral_source || u.onboarding_primary_goal;
+      let survey = '';
+      if (hasSurvey) {
+        survey += chip('Untuk siapa', ONBOARDING_USE_CASE_LABELS[u.onboarding_use_case] || '-', 'chip-survey');
+        survey += chip('Jml langganan', u.onboarding_sub_range || '-', 'chip-survey');
+        survey += chip('Tahu dari', ONBOARDING_REFERRAL_LABELS[u.onboarding_referral_source] || '-', 'chip-survey');
+        survey += chip('Tujuan', ONBOARDING_GOAL_LABELS[u.onboarding_primary_goal] || '-', 'chip-survey');
+      }
       const checked = selected.has(u.user_id) ? 'checked' : '';
       const uidAttr = 'data-uid="' + u.user_id + '"';
       const emailAttr = 'data-email="' + escapeHtml(u.email || '').replace(/"/g, '&quot;') + '"';
@@ -3390,6 +3428,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
             '</span>' +
           '</div>' +
           '<div class="row-meta">' + meta + '</div>' +
+          (hasSurvey ? '<div class="row-meta row-survey">' + survey + '</div>' : '') +
           '<div class="row-actions">' + actions + '</div>' +
         '</div>'
       );

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -24,10 +24,12 @@ import { api, ApiError } from "@/src/lib/api";
 import { Input, Button } from "@/src/components/ui";
 import { colors, font, fontSize, radius, spacing, shadow, formatRupiah, webMaxWidth } from "@/src/theme";
 
+const WA_VERIFY_RESEND_COOLDOWN_S = 45;
+
 export default function Account() {
   const insets = useSafeAreaInsets();
   const tabH = useContext(BottomTabBarHeightContext) ?? 64 + insets.bottom;
-  const { user, logout, setUser } = useAuth();
+  const { user, logout, setUser, verifyPhoneRequest, verifyPhoneConfirm } = useAuth();
   const { showUpgrade } = useUpgrade();
   const toast = useToast();
   const { t, language, locale, setLanguage } = useLanguage();
@@ -103,7 +105,79 @@ export default function Account() {
     }
   };
 
-  const toggleWa = (val: boolean) => saveChannels(push, val);
+  // Turning WhatsApp notifications on requires a verified number first —
+  // the switch stays off (and the toggle short-circuits into this modal)
+  // until /auth/phone/verify/confirm proves ownership. Once verified, the
+  // backend flips notify_channels.whatsapp itself, so we just mirror that.
+  const [waVerifyStep, setWaVerifyStep] = useState<"closed" | "phone" | "otp">("closed");
+  const [waPhoneInput, setWaPhoneInput] = useState(user?.phone || "");
+  const [waPendingPhone, setWaPendingPhone] = useState("");
+  const [waOtpInput, setWaOtpInput] = useState("");
+  const [waVerifyBusy, setWaVerifyBusy] = useState(false);
+  const [waCooldown, setWaCooldown] = useState(0);
+
+  useEffect(() => {
+    if (waCooldown <= 0) return;
+    const id = setInterval(() => setWaCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(id);
+  }, [waCooldown]);
+
+  const toggleWa = (val: boolean) => {
+    if (val && !user?.phone_verified) {
+      setWaPhoneInput(user?.phone || "");
+      setWaOtpInput("");
+      setWaVerifyStep("phone");
+      return;
+    }
+    saveChannels(push, val);
+  };
+
+  const closeWaVerify = () => setWaVerifyStep("closed");
+
+  const submitWaVerifyPhone = async () => {
+    if (!waPhoneInput.trim()) return;
+    setWaVerifyBusy(true);
+    try {
+      const normalized = await verifyPhoneRequest(waPhoneInput.trim());
+      setWaPendingPhone(normalized);
+      setWaOtpInput("");
+      setWaCooldown(WA_VERIFY_RESEND_COOLDOWN_S);
+      setWaVerifyStep("otp");
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : t("account.errWaVerify"), "error");
+    } finally {
+      setWaVerifyBusy(false);
+    }
+  };
+
+  const resendWaVerifyOtp = async () => {
+    if (waCooldown > 0) return;
+    setWaVerifyBusy(true);
+    try {
+      await verifyPhoneRequest(waPendingPhone);
+      setWaCooldown(WA_VERIFY_RESEND_COOLDOWN_S);
+      toast.show(t("auth.otpResentToast"), "info");
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : t("account.errWaVerify"), "error");
+    } finally {
+      setWaVerifyBusy(false);
+    }
+  };
+
+  const submitWaVerifyOtp = async () => {
+    if (waOtpInput.trim().length !== 6) return;
+    setWaVerifyBusy(true);
+    try {
+      await verifyPhoneConfirm(waOtpInput.trim());
+      setWa(true);
+      setWaVerifyStep("closed");
+      toast.show(t("account.waVerifiedToast"), "success");
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : t("account.errWaVerify"), "error");
+    } finally {
+      setWaVerifyBusy(false);
+    }
+  };
 
   const waLimit = user?.wa_notif_limit ?? 5;
   const waUsed = Math.min(user?.wa_notif_used ?? 0, waLimit);
@@ -276,22 +350,48 @@ export default function Account() {
           )}
         </View>
       ) : (
-        <Pressable testID="upgrade-card" onPress={showUpgrade} style={{ marginHorizontal: spacing.xl }}>
-          <LinearGradient
-            colors={[colors.brand, colors.brandDark]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.upgradeCard}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.upgradeTitle}>{t("account.upgradeTitle")}</Text>
-              <Text style={styles.upgradeSub}>{t("account.upgradeSubtitle")}</Text>
+        <View style={{ marginHorizontal: spacing.xl }}>
+          <View style={styles.promoCard}>
+            <LinearGradient
+              colors={[colors.brand, colors.brandDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.promoBadge}>
+              <MaterialCommunityIcons name="crown" size={14} color={colors.brandDark} />
+              <Text style={styles.promoBadgeText}>{t("account.premiumPromoBadge")}</Text>
             </View>
-            <View style={styles.upgradeArrow}>
-              <MaterialCommunityIcons name="crown" size={22} color={colors.brand} />
+            <Text style={styles.promoTitle}>{t("account.upgradeTitle")}</Text>
+            <View style={styles.promoPriceRow}>
+              <Text style={styles.promoPrice}>Rp19.000</Text>
+              <Text style={styles.promoPriceSuffix}>{t("account.premiumPromoPriceSuffix")}</Text>
             </View>
-          </LinearGradient>
-        </Pressable>
+            <Text style={styles.promoSubtitle}>{t("account.upgradeSubtitle")}</Text>
+
+            <View style={styles.promoItems}>
+              {[
+                t("upgrade.benefitUnlimited"),
+                t("upgrade.benefitWhatsapp"),
+                t("upgrade.benefitFamily"),
+                t("upgrade.benefitSummary"),
+              ].map((it) => (
+                <View key={it} style={styles.promoItemRow}>
+                  <MaterialCommunityIcons name="check-circle" size={18} color="#FFFFFF" />
+                  <Text style={styles.promoItemText}>{it}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Pressable
+              testID="upgrade-card"
+              onPress={showUpgrade}
+              style={({ pressed }) => [styles.promoCta, pressed && { opacity: 0.9 }]}
+            >
+              <Text style={styles.promoCtaText}>{t("upgrade.cta")}</Text>
+            </Pressable>
+          </View>
+        </View>
       )}
 
       {/* Notification channels */}
@@ -375,7 +475,7 @@ export default function Account() {
         </View>
       )}
 
-      <View style={styles.card}>
+      <View style={[styles.card, !user?.phone_verified && styles.cardDanger]}>
         <Pressable
           testID="phone-row"
           style={styles.row}
@@ -384,8 +484,12 @@ export default function Account() {
             setPhoneModal(true);
           }}
         >
-          <View style={styles.rowIcon}>
-            <MaterialCommunityIcons name="phone" size={20} color={colors.brand} />
+          <View style={[styles.rowIcon, !user?.phone_verified && styles.rowIconDanger]}>
+            <MaterialCommunityIcons
+              name="phone"
+              size={20}
+              color={!user?.phone_verified ? colors.error : colors.brand}
+            />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>{t("account.phoneRowTitle")}</Text>
@@ -395,6 +499,12 @@ export default function Account() {
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
         </Pressable>
+        {!user?.phone_verified && (
+          <View style={styles.dangerBanner}>
+            <MaterialCommunityIcons name="alert-circle" size={16} color={colors.error} />
+            <Text style={styles.dangerText}>{t("account.phoneUnverifiedCaption")}</Text>
+          </View>
+        )}
         {wa && !user?.wa_live && (
           <View style={styles.simulBanner}>
             <MaterialCommunityIcons name="flask-outline" size={16} color="#B45309" />
@@ -405,7 +515,7 @@ export default function Account() {
 
       {/* Budget */}
       <Text style={styles.sectionLabel}>{t("account.budgetSection")}</Text>
-      <View style={styles.card}>
+      <View style={[styles.card, !user?.monthly_limit && styles.cardWarning]}>
         <Pressable
           testID="limit-row"
           style={styles.row}
@@ -414,8 +524,12 @@ export default function Account() {
             setLimitModal(true);
           }}
         >
-          <View style={styles.rowIcon}>
-            <MaterialCommunityIcons name="chart-donut" size={20} color={colors.brand} />
+          <View style={[styles.rowIcon, !user?.monthly_limit && styles.rowIconWarning]}>
+            <MaterialCommunityIcons
+              name="chart-donut"
+              size={20}
+              color={!user?.monthly_limit ? "#B45309" : colors.brand}
+            />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>{t("account.limitRowTitle")}</Text>
@@ -425,6 +539,12 @@ export default function Account() {
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
         </Pressable>
+        {!user?.monthly_limit && (
+          <View style={styles.warningBanner}>
+            <MaterialCommunityIcons name="alert-outline" size={16} color="#B45309" />
+            <Text style={styles.warningText}>{t("account.limitUnsetCaption")}</Text>
+          </View>
+        )}
       </View>
 
       {/* Language */}
@@ -536,6 +656,80 @@ export default function Account() {
             <Pressable style={styles.cancelBtn} onPress={() => setLimitModal(false)}>
               <Text style={styles.cancelText}>{t("common.cancel")}</Text>
             </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* WhatsApp number verification, required before the toggle can turn on */}
+      <Modal
+        visible={waVerifyStep !== "closed"}
+        transparent
+        animationType="fade"
+        onRequestClose={closeWaVerify}
+      >
+        <Pressable style={styles.backdrop} onPress={closeWaVerify}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            {waVerifyStep === "phone" && (
+              <>
+                <Text style={styles.modalTitle}>{t("account.waVerifyModalTitle")}</Text>
+                <Text style={styles.modalSub}>{t("account.waVerifyModalSub")}</Text>
+                <Input
+                  testID="wa-verify-phone-input"
+                  icon="whatsapp"
+                  placeholder={t("account.phonePlaceholder")}
+                  value={waPhoneInput}
+                  onChangeText={setWaPhoneInput}
+                  keyboardType="phone-pad"
+                  autoFocus
+                />
+                <Button
+                  testID="wa-verify-phone-submit"
+                  title={t("account.waVerifySubmit")}
+                  onPress={submitWaVerifyPhone}
+                  loading={waVerifyBusy}
+                />
+                <Pressable style={styles.cancelBtn} onPress={closeWaVerify}>
+                  <Text style={styles.cancelText}>{t("common.cancel")}</Text>
+                </Pressable>
+              </>
+            )}
+            {waVerifyStep === "otp" && (
+              <>
+                <Text style={styles.modalTitle}>{t("auth.otpTitle")}</Text>
+                <Text style={styles.modalSub}>
+                  {t("auth.otpSubWa")} +{waPendingPhone}
+                </Text>
+                <Input
+                  testID="wa-verify-otp-input"
+                  icon="shield-key"
+                  placeholder={t("auth.otpPlaceholder")}
+                  value={waOtpInput}
+                  onChangeText={(v) => setWaOtpInput(v.replace(/\D/g, "").slice(0, 6))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  autoFocus
+                />
+                <Button
+                  testID="wa-verify-otp-submit"
+                  title={t("auth.otpSubmit")}
+                  onPress={submitWaVerifyOtp}
+                  loading={waVerifyBusy}
+                  disabled={waOtpInput.trim().length !== 6}
+                />
+                <Pressable
+                  onPress={resendWaVerifyOtp}
+                  disabled={waCooldown > 0}
+                  style={styles.cancelBtn}
+                >
+                  <Text style={[styles.cancelText, waCooldown === 0 && { color: colors.brand }]}>
+                    {waCooldown > 0 ? t("auth.otpResendWait", { s: waCooldown }) : t("auth.otpResend")}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.cancelBtn} onPress={() => setWaVerifyStep("phone")}>
+                  <Text style={styles.cancelText}>{t("account.waVerifyBack")}</Text>
+                </Pressable>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -737,24 +931,56 @@ const styles = StyleSheet.create({
   name: { fontFamily: font.bold, fontSize: fontSize.xl, color: colors.onSurface },
   email: { fontFamily: font.regular, fontSize: fontSize.base, color: colors.muted },
 
-  upgradeCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
+  promoCard: {
     borderRadius: radius.lg,
-    padding: spacing.lg,
+    padding: spacing.xl,
+    overflow: "hidden",
     ...shadow.card,
   },
-  upgradeTitle: { fontFamily: font.extrabold, fontSize: fontSize.lg, color: "#fff" },
-  upgradeSub: { fontFamily: font.medium, fontSize: fontSize.sm, color: "rgba(255,255,255,0.9)", marginTop: 2, lineHeight: 18 },
-  upgradeArrow: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: "#fff",
+  promoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    marginBottom: spacing.md,
+  },
+  promoBadgeText: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.brandDark },
+  promoTitle: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: "#FFFFFF" },
+  promoPriceRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs, marginTop: spacing.sm },
+  promoPrice: { fontFamily: font.extrabold, fontSize: 32, lineHeight: 36, color: "#FFFFFF" },
+  promoPriceSuffix: {
+    fontFamily: font.semibold,
+    fontSize: fontSize.base,
+    color: "rgba(255,255,255,0.85)",
+    marginBottom: 4,
+  },
+  promoSubtitle: {
+    fontFamily: font.medium,
+    fontSize: fontSize.sm,
+    color: "rgba(255,255,255,0.9)",
+    marginTop: spacing.xs,
+    lineHeight: 19,
+  },
+  promoItems: { marginTop: spacing.lg, marginBottom: spacing.lg, gap: spacing.sm },
+  promoItemRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  promoItemText: { fontFamily: font.medium, fontSize: fontSize.base, color: "#FFFFFF" },
+  promoCta: {
+    height: 54,
+    borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#FBBF24",
+    shadowColor: "#78350F",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 3,
   },
+  promoCtaText: { fontFamily: font.bold, fontSize: fontSize.lg, color: "#78350F" },
   premiumCard: {
     marginHorizontal: spacing.xl,
     backgroundColor: "#FEF3C7",
@@ -804,6 +1030,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     ...shadow.soft,
     overflow: "hidden",
+  },
+  cardDanger: {
+    borderWidth: 1.5,
+    borderColor: colors.error,
+    backgroundColor: "#FEF2F2",
+  },
+  cardWarning: {
+    borderWidth: 1.5,
+    borderColor: colors.warning,
+    backgroundColor: "#FFFBEB",
   },
   waCard: { borderRadius: radius.lg, overflow: "hidden", ...shadow.soft },
   waFreeCard: {
@@ -881,6 +1117,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  rowIconDanger: { backgroundColor: "#FEE2E2" },
+  rowIconWarning: { backgroundColor: "#FDE68A" },
   rowTitle: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface },
   rowSub: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 1 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 66 },
@@ -895,6 +1133,28 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   simulText: { flex: 1, fontFamily: font.medium, fontSize: fontSize.sm, color: "#92400E", lineHeight: 17 },
+  dangerBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: "#FEE2E2",
+    padding: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    borderRadius: radius.md,
+  },
+  dangerText: { flex: 1, fontFamily: font.medium, fontSize: fontSize.sm, color: "#991B1B", lineHeight: 17 },
+  warningBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: "#FDE68A",
+    padding: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    borderRadius: radius.md,
+  },
+  warningText: { flex: 1, fontFamily: font.medium, fontSize: fontSize.sm, color: "#92400E", lineHeight: 17 },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(24,41,36,0.5)",

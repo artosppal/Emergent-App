@@ -55,6 +55,7 @@ export default function Login() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [pendingTarget, setPendingTarget] = useState("");
@@ -83,6 +84,10 @@ export default function Login() {
     }
     if (password.length < 6) {
       toast.show(t("auth.errPasswordLen"), "error");
+      return;
+    }
+    if (isRegister && password !== confirmPassword) {
+      toast.show(t("auth.errPasswordMismatch"), "error");
       return;
     }
     setLoading(true);
@@ -374,15 +379,34 @@ export default function Login() {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
-                  returnKeyType="go"
-                  onSubmitEditing={submit}
+                  returnKeyType={isRegister ? "next" : "go"}
+                  onSubmitEditing={isRegister ? undefined : submit}
                 />
+                {isRegister && (
+                  <Input
+                    testID="confirm-password-input"
+                    label={t("auth.confirmPasswordLabel")}
+                    icon="lock-check"
+                    placeholder={t("auth.confirmPasswordPlaceholder")}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    secureTextEntry
+                    error={
+                      confirmPassword.length > 0 && confirmPassword !== password
+                        ? t("auth.errPasswordMismatch")
+                        : undefined
+                    }
+                    returnKeyType="go"
+                    onSubmitEditing={submit}
+                  />
+                )}
 
                 <Button
                   testID="submit-button"
                   title={isRegister ? t("auth.submitRegister") : t("auth.submitLogin")}
                   onPress={submit}
                   loading={loading}
+                  disabled={isRegister && (!confirmPassword || password !== confirmPassword)}
                 />
 
                 <View style={styles.divider}>
