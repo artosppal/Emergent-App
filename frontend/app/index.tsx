@@ -1,10 +1,27 @@
-import React from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import React, { useEffect } from "react";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useAuth } from "@/src/context/AuthContext";
+import { LandingPage } from "@/src/components/landing/LandingPage";
 import { colors, font, fontSize, spacing } from "@/src/theme";
 
-// Branded splash while the auth gate (root layout) decides the destination.
+// Web + logged-out: show the marketing landing page.
+// Native, or still resolving/authenticated: branded splash while the auth
+// gate (root layout, or the redirect below on native) decides the destination.
 export default function Index() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (Platform.OS === "web" || loading || user) return;
+    router.replace("/(auth)/login");
+  }, [loading, user, router]);
+
+  if (Platform.OS === "web" && !loading && !user) {
+    return <LandingPage />;
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.logo}>

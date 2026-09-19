@@ -416,6 +416,75 @@ export const translations = {
         "Langganan kamu resmi kami hentikan — gak akan ada tagihan lagi setelahnya. Tenang, semua fitur Premium masih bisa kamu nikmati penuh sampai {{date}}, jadi gak ada yang berhenti mendadak. Kalau suatu saat kangen, pintu kami selalu terbuka 🚪",
       thanksClose: "Oke, Mengerti",
     },
+    landing: {
+      navFeatures: "Fitur",
+      navHow: "Cara Kerja",
+      navPricing: "Harga",
+      navLogin: "Masuk",
+      navSignup: "Daftar Gratis",
+
+      heroEyebrow: "PELACAK LANGGANAN",
+      heroTitlePart1: "Kelola Semua ",
+      heroTitleHighlight: "Langganan",
+      heroTitlePart2: "Mu di Satu Tempat",
+      heroSubtitle:
+        "Notifin ingetin kamu sebelum trial gratis berubah jadi tagihan, dan bantu lacak semua pengeluaran langganan bulananmu.",
+      heroCtaPrimary: "Daftar Gratis",
+      heroCtaSecondary: "Sudah Punya Akun? Masuk",
+      heroTrust: "Gratis untuk hingga 3 langganan · Tanpa kartu kredit",
+
+      mockCardTitle: "Jatuh Tempo Minggu Ini",
+      mockItem1Name: "Netflix",
+      mockItem1Due: "3 hari lagi",
+      mockItem2Name: "Spotify",
+      mockItem2Due: "Besok",
+      mockItem3Name: "iCloud+",
+      mockItem3Due: "Hari ini",
+      mockTotalLabel: "Total Bulan Ini",
+
+      featuresEyebrow: "FITUR UTAMA",
+      featuresTitle: "Semua yang Kamu Butuhkan Biar Gak Boncos",
+      feature1Title: "Pengingat Sebelum Kelewat",
+      feature1Body:
+        "Dapat notifikasi H-3, H-1, dan di hari-H sebelum jatuh tempo, jadi gak ada lagi trial yang lupa dibatalkan atau tagihan dadakan.",
+      feature2Title: "Dashboard Pengeluaran",
+      feature2Body:
+        "Lihat total bulanan, proyeksi ke depan, dan rincian pengeluaran per kategori dalam satu layar.",
+      feature3Title: "Berbagi Bareng Keluarga",
+      feature3Body:
+        "Patungan Netflix atau Spotify bareng teman? Bagi tagihan secara adil dan pantau siapa yang belum bayar.",
+
+      howEyebrow: "CARA KERJA",
+      howTitle: "Mulai dalam 3 Langkah",
+      how1Title: "Tambahkan Langganan",
+      how1Body: "Catat semua langganan aktifmu beserta harga dan tanggal jatuh temponya.",
+      how2Title: "Atur Pengingat",
+      how2Body: "Notifin otomatis ingetin lewat notifikasi — dan WhatsApp untuk pengguna Premium.",
+      how3Title: "Pantau & Hemat",
+      how3Body: "Lihat total pengeluaran bulanan dan langganan mana yang jarang kamu pakai.",
+
+      pricingEyebrow: "HARGA",
+      pricingTitle: "Mulai Gratis, Upgrade Kapan Saja",
+      pricingFreeTitle: "Gratis",
+      pricingFreeItem1: "Hingga 3 langganan aktif",
+      pricingFreeItem2: "Pengingat via notifikasi",
+      pricingFreeItem3: "Dashboard pengeluaran",
+      pricingPremiumTitle: "Premium",
+      pricingPremiumBadge: "Paling Populer",
+      pricingPremiumItem1: "Langganan tanpa batas",
+      pricingPremiumItem2: "Pengingat via WhatsApp",
+      pricingPremiumItem3: "Berbagi grup & keluarga",
+      pricingCta: "Mulai Gratis Sekarang",
+
+      ctaTitle: "Siap Rapikan Langgananmu?",
+      ctaSubtitle: "Gratis buat mulai, cuma butuh 1 menit daftar.",
+      ctaButton: "Daftar Gratis",
+
+      footerTagline: "Biar gak ada lagi langganan yang kelewat atau lupa di-cancel.",
+      footerPrivacy: "Kebijakan Privasi",
+      footerTerms: "Syarat & Ketentuan",
+      footerRights: "Hak cipta dilindungi.",
+    },
   },
   en: {
     common: {
@@ -829,6 +898,75 @@ export const translations = {
       thanksBody:
         "Your subscription is officially cancelled — you won't be charged again. Don't worry, you'll keep full Premium access until {{date}}, so nothing stops abruptly. If you ever miss it, the door's always open 🚪",
       thanksClose: "Got It",
+    },
+    landing: {
+      navFeatures: "Features",
+      navHow: "How It Works",
+      navPricing: "Pricing",
+      navLogin: "Log In",
+      navSignup: "Sign Up Free",
+
+      heroEyebrow: "SUBSCRIPTION TRACKER",
+      heroTitlePart1: "Manage All Your ",
+      heroTitleHighlight: "Subscriptions",
+      heroTitlePart2: " in One Place",
+      heroSubtitle:
+        "Notifin reminds you before a free trial turns into a bill, and helps you track all your monthly subscription spending.",
+      heroCtaPrimary: "Sign Up Free",
+      heroCtaSecondary: "Already Have an Account? Log In",
+      heroTrust: "Free for up to 3 subscriptions · No credit card needed",
+
+      mockCardTitle: "Due This Week",
+      mockItem1Name: "Netflix",
+      mockItem1Due: "in 3 days",
+      mockItem2Name: "Spotify",
+      mockItem2Due: "Tomorrow",
+      mockItem3Name: "iCloud+",
+      mockItem3Due: "Today",
+      mockTotalLabel: "Total This Month",
+
+      featuresEyebrow: "KEY FEATURES",
+      featuresTitle: "Everything You Need to Stop Overspending",
+      feature1Title: "Reminders Before You Miss Them",
+      feature1Body:
+        "Get notified 3 days before, 1 day before, and on the due date, so no more forgotten trials or surprise charges.",
+      feature2Title: "Spending Dashboard",
+      feature2Body:
+        "See your monthly total, upcoming projection, and spending breakdown by category in one screen.",
+      feature3Title: "Share With Family",
+      feature3Body:
+        "Splitting Netflix or Spotify with friends? Divide the bill fairly and track who still owes their share.",
+
+      howEyebrow: "HOW IT WORKS",
+      howTitle: "Get Started in 3 Steps",
+      how1Title: "Add Your Subscriptions",
+      how1Body: "Log all your active subscriptions with their price and due date.",
+      how2Title: "Set Up Reminders",
+      how2Body: "Notifin automatically reminds you via push — and WhatsApp for Premium users.",
+      how3Title: "Track & Save",
+      how3Body: "See your monthly spending and which subscriptions you barely use.",
+
+      pricingEyebrow: "PRICING",
+      pricingTitle: "Start Free, Upgrade Anytime",
+      pricingFreeTitle: "Free",
+      pricingFreeItem1: "Up to 3 active subscriptions",
+      pricingFreeItem2: "Push notification reminders",
+      pricingFreeItem3: "Spending dashboard",
+      pricingPremiumTitle: "Premium",
+      pricingPremiumBadge: "Most Popular",
+      pricingPremiumItem1: "Unlimited subscriptions",
+      pricingPremiumItem2: "WhatsApp reminders",
+      pricingPremiumItem3: "Group & family sharing",
+      pricingCta: "Start Free Now",
+
+      ctaTitle: "Ready to Get Your Subscriptions in Order?",
+      ctaSubtitle: "Free to start, sign up takes just 1 minute.",
+      ctaButton: "Sign Up Free",
+
+      footerTagline: "So you never miss or forget to cancel a subscription again.",
+      footerPrivacy: "Privacy Policy",
+      footerTerms: "Terms & Conditions",
+      footerRights: "All rights reserved.",
     },
   },
 } as const;

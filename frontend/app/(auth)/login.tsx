@@ -10,6 +10,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Button, Input } from "@/src/components/ui";
 import { useAuth } from "@/src/context/AuthContext";
@@ -34,6 +35,7 @@ type Mode =
 
 export default function Login() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const {
     login,
     registerStart,
@@ -49,7 +51,7 @@ export default function Login() {
   const toast = useToast();
   const { t } = useLanguage();
 
-  const [mode, setMode] = useState<Mode>("login");
+  const [mode, setMode] = useState<Mode>(params.mode === "register" ? "register" : "login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

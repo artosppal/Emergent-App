@@ -53,7 +53,9 @@ function RootNavigator() {
     if (loading) return;
     const inAuth = segments[0] === "(auth)";
     const atRoot = segments.length === 0;
-    if (!user && !inAuth) {
+    // Root ("/") handles its own gate: it shows the landing page to logged-out
+    // web visitors instead of bouncing straight to /login.
+    if (!user && !inAuth && !atRoot) {
       router.replace("/(auth)/login");
     } else if (user && (inAuth || atRoot)) {
       router.replace("/(tabs)");
