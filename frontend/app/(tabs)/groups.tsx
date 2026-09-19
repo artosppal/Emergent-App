@@ -20,7 +20,7 @@ import { useUpgrade } from "@/src/context/UpgradeContext";
 import { useToast } from "@/src/context/ToastContext";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { EmptyState, Button, Input } from "@/src/components/ui";
-import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
+import { colors, font, fontSize, radius, spacing, shadow, formatRupiah, webMaxWidth } from "@/src/theme";
 
 interface GroupItem {
   id: string;
@@ -169,6 +169,9 @@ export default function Groups() {
             paddingHorizontal: spacing.xl,
             paddingTop: spacing.lg,
             paddingBottom: tabH + spacing.xl,
+            width: "100%",
+            maxWidth: webMaxWidth,
+            alignSelf: "center",
           }}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
@@ -283,8 +286,18 @@ const styles = StyleSheet.create({
     color: colors.onSurface,
     paddingHorizontal: spacing.xl,
     marginBottom: spacing.lg,
+    width: "100%",
+    maxWidth: webMaxWidth,
+    alignSelf: "center",
   },
-  actionRow: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.xl },
+  actionRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    width: "100%",
+    maxWidth: webMaxWidth,
+    alignSelf: "center",
+  },
   actionBtn: {
     flex: 1,
     flexDirection: "row",

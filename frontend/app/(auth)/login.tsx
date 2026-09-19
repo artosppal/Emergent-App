@@ -17,7 +17,7 @@ import { useAuth } from "@/src/context/AuthContext";
 import { useToast } from "@/src/context/ToastContext";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { ApiError } from "@/src/lib/api";
-import { colors, font, fontSize, radius, spacing } from "@/src/theme";
+import { colors, font, fontSize, radius, spacing, webFormMaxWidth } from "@/src/theme";
 
 const HERO =
   "https://images.unsplash.com/photo-1685871286419-58e4fc0de8e1?crop=entropy&cs=srgb&fm=jpg&w=1200&q=80";
@@ -437,7 +437,13 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
   },
-  heroContent: { padding: spacing.xl, paddingBottom: spacing["2xl"] },
+  heroContent: {
+    padding: spacing.xl,
+    paddingBottom: spacing["2xl"],
+    width: "100%",
+    maxWidth: webFormMaxWidth,
+    alignSelf: "center",
+  },
   logoBadge: {
     width: 52,
     height: 52,
@@ -456,7 +462,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     maxWidth: 300,
   },
-  form: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
+  form: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    width: "100%",
+    maxWidth: webFormMaxWidth,
+    alignSelf: "center",
+  },
   formTitle: { fontFamily: font.extrabold, fontSize: fontSize["2xl"], color: colors.onSurface },
   formSub: {
     fontFamily: font.regular,

@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Button } from "@/src/components/ui";
 import { useLanguage } from "@/src/context/LanguageContext";
@@ -250,6 +251,7 @@ function Pricing({ isTablet, onSignup, t }: any) {
     t("landing.pricingPremiumItem1"),
     t("landing.pricingPremiumItem2"),
     t("landing.pricingPremiumItem3"),
+    t("landing.pricingPremiumItem4"),
   ];
   return (
     <View style={styles.sectionOuterAlt}>
@@ -258,27 +260,57 @@ function Pricing({ isTablet, onSignup, t }: any) {
         <View style={[styles.pricingRow, isTablet && styles.pricingRowWide]}>
           <View style={styles.pricingCard}>
             <Text style={styles.pricingPlanTitle}>{t("landing.pricingFreeTitle")}</Text>
-            {freeItems.map((it) => (
-              <PricingItem key={it} label={it} />
-            ))}
-          </View>
-
-          <View style={[styles.pricingCard, styles.pricingCardHighlight]}>
-            <View style={styles.pricingBadge}>
-              <Text style={styles.pricingBadgeText}>{t("landing.pricingPremiumBadge")}</Text>
+            <View style={styles.pricingPriceRow}>
+              <Text style={styles.pricingPrice}>{t("landing.pricingFreePrice")}</Text>
             </View>
-            <Text style={[styles.pricingPlanTitle, { color: colors.onBrandPrimary }]}>
-              {t("landing.pricingPremiumTitle")}
-            </Text>
-            {premiumItems.map((it) => (
-              <PricingItem key={it} label={it} inverted />
-            ))}
+            <Text style={styles.pricingPriceSuffix}>{t("landing.pricingFreePriceSuffix")}</Text>
+
+            <View style={styles.pricingItemsFill}>
+              {freeItems.map((it) => (
+                <PricingItem key={it} label={it} />
+              ))}
+            </View>
+
             <Button
-              title={t("landing.pricingCta")}
+              title={t("landing.pricingFreeCta")}
               onPress={onSignup}
               variant="secondary"
-              style={{ backgroundColor: "#FFFFFF", marginTop: spacing.lg }}
-              testID="landing-pricing-signup"
+              testID="landing-pricing-free-signup"
+            />
+          </View>
+
+          <View style={[styles.pricingCard, styles.pricingCardHighlight, isTablet && styles.pricingCardHighlightWide]}>
+            <LinearGradient
+              colors={[colors.brand, colors.brandDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.pricingBadge}>
+              <MaterialCommunityIcons name="crown" size={14} color={colors.brandDark} />
+              <Text style={styles.pricingBadgeText}>{t("landing.pricingPremiumBadge")}</Text>
+            </View>
+            <Text style={[styles.pricingPlanTitle, { color: "#FFFFFF" }]}>
+              {t("landing.pricingPremiumTitle")}
+            </Text>
+            <View style={styles.pricingPriceRow}>
+              <Text style={[styles.pricingPrice, { color: "#FFFFFF" }]}>{t("landing.pricingPremiumPrice")}</Text>
+              <Text style={styles.pricingPriceSuffixInline}>{t("landing.pricingPremiumPriceSuffix")}</Text>
+            </View>
+            <Text style={styles.pricingYearlyNote}>{t("landing.pricingPremiumYearlyNote")}</Text>
+
+            <View style={styles.pricingItemsFill}>
+              {premiumItems.map((it) => (
+                <PricingItem key={it} label={it} inverted />
+              ))}
+            </View>
+
+            <Button
+              title={t("landing.pricingPremiumCta")}
+              onPress={onSignup}
+              variant="secondary"
+              style={{ backgroundColor: "#FFFFFF" }}
+              testID="landing-pricing-premium-signup"
             />
           </View>
         </View>
@@ -539,7 +571,7 @@ const styles = StyleSheet.create({
   stepNumberText: { fontFamily: font.extrabold, fontSize: fontSize.lg, color: colors.onBrandPrimary },
 
   pricingRow: { flexDirection: "column", gap: spacing.lg },
-  pricingRowWide: { flexDirection: "row" },
+  pricingRowWide: { flexDirection: "row", alignItems: "stretch" },
   pricingCard: {
     flex: 1,
     backgroundColor: colors.surfaceSecondary,
@@ -548,17 +580,58 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  pricingCardHighlight: { backgroundColor: colors.brand, borderColor: colors.brand },
+  pricingCardHighlight: {
+    borderColor: colors.brandDark,
+    overflow: "hidden",
+    ...shadow.card,
+  },
+  pricingCardHighlightWide: {
+    marginTop: -spacing.lg,
+    marginBottom: -spacing.lg,
+    paddingTop: spacing.xl + spacing.lg,
+    paddingBottom: spacing.xl + spacing.lg,
+  },
   pricingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: spacing.md,
     paddingVertical: 4,
     borderRadius: radius.pill,
     marginBottom: spacing.md,
   },
-  pricingBadgeText: { fontFamily: font.bold, fontSize: fontSize.sm, color: "#FFFFFF" },
-  pricingPlanTitle: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: colors.onSurface, marginBottom: spacing.lg },
+  pricingBadgeText: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.brandDark },
+  pricingPlanTitle: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: colors.onSurface },
+  pricingPriceRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs, marginTop: spacing.sm },
+  pricingPrice: { fontFamily: font.extrabold, fontSize: 40, lineHeight: 44, color: colors.onSurface },
+  pricingPriceSuffix: {
+    fontFamily: font.medium,
+    fontSize: fontSize.sm,
+    color: colors.muted,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  pricingPriceSuffixInline: {
+    fontFamily: font.semibold,
+    fontSize: fontSize.base,
+    color: "rgba(255,255,255,0.85)",
+    marginBottom: 6,
+  },
+  pricingYearlyNote: {
+    fontFamily: font.semibold,
+    fontSize: fontSize.sm,
+    color: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignSelf: "flex-start",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  pricingItemsFill: { flex: 1, marginBottom: spacing.lg },
   pricingItemRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
   pricingItemText: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface },
 

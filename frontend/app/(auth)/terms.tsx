@@ -2,7 +2,7 @@ import React from "react";
 import { ScrollView, Text, View, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, font, fontSize, spacing } from "@/src/theme";
+import { colors, font, fontSize, spacing, webMaxWidth } from "@/src/theme";
 
 function P({ children }: { children: React.ReactNode }) {
   return (
@@ -51,6 +51,7 @@ export default function Terms() {
           borderBottomColor: colors.border,
         }}
       >
+      <View style={{ width: "100%", maxWidth: webMaxWidth, alignSelf: "center" }}>
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/(auth)/login"))}>
           <Text style={{ fontFamily: font.semibold, fontSize: fontSize.base, color: colors.brand }}>
             {"< Kembali"}
@@ -63,8 +64,18 @@ export default function Terms() {
           Berlaku untuk aplikasi Notifin (notifin.online)
         </Text>
       </View>
+      </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.xl, paddingVertical: spacing.lg, paddingBottom: spacing["3xl"] }}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: spacing.xl,
+          paddingVertical: spacing.lg,
+          paddingBottom: spacing["3xl"],
+          width: "100%",
+          maxWidth: webMaxWidth,
+          alignSelf: "center",
+        }}
+      >
         <P>
           Dengan membuat akun dan menggunakan Notifin, kamu menyetujui syarat dan ketentuan di bawah ini.
         </P>

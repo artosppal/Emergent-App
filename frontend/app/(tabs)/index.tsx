@@ -26,7 +26,7 @@ import { useToast } from "@/src/context/ToastContext";
 import { SubscriptionCard, Subscription, CategoryLogo } from "@/src/components/SubscriptionCard";
 import { SectionTitle, EmptyState, Button } from "@/src/components/ui";
 import { getCategory } from "@/src/constants/categories";
-import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
+import { colors, font, fontSize, radius, spacing, shadow, formatRupiah, webMaxWidth } from "@/src/theme";
 
 interface PromoItem {
   id: string;
@@ -615,6 +615,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: spacing.xl,
     marginBottom: spacing.lg,
+    width: "100%",
+    maxWidth: webMaxWidth,
+    alignSelf: "center",
   },
   greeting: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.muted },
   userName: { fontFamily: font.extrabold, fontSize: fontSize["2xl"], color: colors.onSurface },
@@ -636,7 +639,13 @@ const styles = StyleSheet.create({
   },
   freePillText: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.onSurfaceTertiary },
 
-  section: { paddingHorizontal: spacing.xl, marginTop: spacing.lg },
+  section: {
+    paddingHorizontal: spacing.xl,
+    marginTop: spacing.lg,
+    width: "100%",
+    maxWidth: webMaxWidth,
+    alignSelf: "center",
+  },
   totalCard: { borderRadius: radius.lg, padding: spacing.xl, ...shadow.card },
   totalTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   totalLabel: { fontFamily: font.semibold, fontSize: fontSize.base, color: "rgba(255,255,255,0.9)" },

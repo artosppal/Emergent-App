@@ -22,7 +22,7 @@ import { useToast } from "@/src/context/ToastContext";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { api, ApiError } from "@/src/lib/api";
 import { Input, Button } from "@/src/components/ui";
-import { colors, font, fontSize, radius, spacing, shadow, formatRupiah } from "@/src/theme";
+import { colors, font, fontSize, radius, spacing, shadow, formatRupiah, webMaxWidth } from "@/src/theme";
 
 export default function Account() {
   const insets = useSafeAreaInsets();
@@ -221,7 +221,13 @@ export default function Account() {
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={{ paddingTop: insets.top + spacing.xl, paddingBottom: tabH + spacing.xl }}
+      contentContainerStyle={{
+        paddingTop: insets.top + spacing.xl,
+        paddingBottom: tabH + spacing.xl,
+        width: "100%",
+        maxWidth: webMaxWidth,
+        alignSelf: "center",
+      }}
       showsVerticalScrollIndicator={false}
     >
       <Text style={styles.screenTitle}>{t("account.title")}</Text>

@@ -42,6 +42,12 @@ export const spacing = {
   "3xl": 48,
 };
 
+// Caps how wide app content grows on desktop web so pages read as a single
+// centered column instead of mobile UI stretched edge-to-edge. No effect on
+// phone-width screens since they never exceed these values.
+export const webMaxWidth = 760;
+export const webFormMaxWidth = 480;
+
 export const radius = {
   sm: 6,
   md: 12,

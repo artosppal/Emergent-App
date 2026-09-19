@@ -23,7 +23,7 @@ import { useLanguage } from "@/src/context/LanguageContext";
 import { SubscriptionCard, Subscription } from "@/src/components/SubscriptionCard";
 import { EmptyState } from "@/src/components/ui";
 import { CATEGORIES } from "@/src/constants/categories";
-import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
+import { colors, font, fontSize, radius, spacing, shadow, webMaxWidth } from "@/src/theme";
 
 export default function Subscriptions() {
   const insets = useSafeAreaInsets();
@@ -106,6 +106,7 @@ export default function Subscriptions() {
         </View>
         <ScrollView
           horizontal
+          style={styles.chipScrollWrap}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipRow}
         >
@@ -139,6 +140,9 @@ export default function Subscriptions() {
             paddingTop: headerHeight + spacing.md,
             paddingHorizontal: spacing.xl,
             paddingBottom: tabH + 90,
+            width: "100%",
+            maxWidth: webMaxWidth,
+            alignSelf: "center",
           }}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
@@ -225,9 +229,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.xl,
     marginBottom: spacing.sm,
+    width: "100%",
+    maxWidth: webMaxWidth,
+    alignSelf: "center",
   },
   title: { fontFamily: font.extrabold, fontSize: fontSize["2xl"], color: colors.onSurface },
   countText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.muted },
+  chipScrollWrap: { width: "100%", maxWidth: webMaxWidth, alignSelf: "center" },
   chipRow: { paddingHorizontal: spacing.xl, gap: spacing.sm, alignItems: "center" },
   chip: {
     height: 36,
