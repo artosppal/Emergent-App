@@ -241,6 +241,8 @@ export default function Login() {
                   onChangeText={(v) => setOtp(v.replace(/\D/g, "").slice(0, 6))}
                   keyboardType="number-pad"
                   maxLength={6}
+                  returnKeyType="go"
+                  onSubmitEditing={submitOtp}
                 />
 
                 <Button
@@ -316,6 +318,8 @@ export default function Login() {
                   value={phone}
                   onChangeText={setPhone}
                   keyboardType="phone-pad"
+                  returnKeyType="go"
+                  onSubmitEditing={mode === "wa-register" ? submitWaRegister : submitWaLogin}
                 />
 
                 <Button
@@ -370,6 +374,8 @@ export default function Login() {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
+                  returnKeyType="go"
+                  onSubmitEditing={submit}
                 />
 
                 <Button
