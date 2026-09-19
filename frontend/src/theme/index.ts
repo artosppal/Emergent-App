@@ -48,6 +48,12 @@ export const spacing = {
 export const webMaxWidth = 760;
 export const webFormMaxWidth = 480;
 
+// Below this window width, the app shell falls back to bottom tabs even on
+// web — a left sidebar needs room for both itself and the content column.
+export const sidebarBreakpoint = 900;
+export const sidebarWidthExpanded = 248;
+export const sidebarWidthCollapsed = 76;
+
 export const radius = {
   sm: 6,
   md: 12,

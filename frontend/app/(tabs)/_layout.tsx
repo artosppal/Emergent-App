@@ -1,12 +1,13 @@
 import React, { useContext } from "react";
-import { Platform } from "react-native";
-import { Tabs } from "expo-router";
+import { Platform, useWindowDimensions } from "react-native";
+import { Tabs, Slot } from "expo-router";
 import { BlurView } from "expo-blur";
 import { StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
-import { colors, font } from "@/src/theme";
+import { colors, font, sidebarBreakpoint } from "@/src/theme";
 import { useLanguage } from "@/src/context/LanguageContext";
+import { Sidebar } from "@/src/components/layout/Sidebar";
 
 function TabIcon({ name, color, focused }: { name: string; color: string; focused: boolean }) {
   return (
@@ -16,6 +17,24 @@ function TabIcon({ name, color, focused }: { name: string; color: string; focuse
 
 export default function TabsLayout() {
   const { t } = useLanguage();
+  const { width } = useWindowDimensions();
+  const useSidebar = Platform.OS === "web" && width >= sidebarBreakpoint;
+
+  if (useSidebar) {
+    return (
+      <View style={styles.sidebarShell}>
+        <Sidebar />
+        <View style={styles.sidebarContent}>
+          {/* Screens read this to pad their scroll content above the (now
+              absent) bottom tab bar; 0 here means "no bar to clear". */}
+          <BottomTabBarHeightContext.Provider value={0}>
+            <Slot />
+          </BottomTabBarHeightContext.Provider>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <Tabs
       screenOptions={{
@@ -92,6 +111,8 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
+  sidebarShell: { flex: 1, flexDirection: "row", backgroundColor: colors.surface },
+  sidebarContent: { flex: 1 },
   blur: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,

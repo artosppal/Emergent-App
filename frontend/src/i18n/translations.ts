@@ -13,6 +13,11 @@ export const translations = {
       groups: "Grup",
       account: "Akun",
     },
+    sidebar: {
+      collapse: "Sembunyikan sidebar",
+      expand: "Tampilkan sidebar",
+      freePlan: "Paket Gratis",
+    },
     auth: {
       heroTagline: "Biar gak ada lagi langganan yang kelewat atau lupa di-cancel.",
       formTitleRegister: "Buat akun baru",
@@ -503,6 +508,11 @@ export const translations = {
       subscriptions: "Subscriptions",
       groups: "Groups",
       account: "Account",
+    },
+    sidebar: {
+      collapse: "Collapse sidebar",
+      expand: "Expand sidebar",
+      freePlan: "Free Plan",
     },
     auth: {
       heroTagline: "So you never miss or forget to cancel a subscription again.",
