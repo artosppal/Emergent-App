@@ -54,12 +54,15 @@ function RootNavigator() {
     const inAuth = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "onboarding";
     const atRoot = segments.length === 0;
+    const inPricing = segments[0] === "pricing";
     const needsOnboarding = !!user && !user.onboarding_completed;
-    // Root ("/") handles its own gate: it shows the landing page to logged-out
-    // web visitors instead of bouncing straight to /login.
-    if (!user && !inAuth && !atRoot) {
+    // Root ("/") and "/pricing" handle their own gate: both show marketing
+    // chrome to logged-out visitors instead of bouncing straight to /login,
+    // and "/pricing" also doubles as an in-app "compare plans" page for
+    // logged-in users, so it stays reachable regardless of plan/onboarding.
+    if (!user && !inAuth && !atRoot && !inPricing) {
       router.replace("/(auth)/login");
-    } else if (needsOnboarding && !inOnboarding) {
+    } else if (needsOnboarding && !inOnboarding && !inPricing) {
       router.replace("/onboarding");
     } else if (user && !needsOnboarding && (inAuth || atRoot || inOnboarding)) {
       router.replace("/(tabs)");
@@ -88,6 +91,7 @@ function RootNavigator() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="pricing" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="(tabs)" />

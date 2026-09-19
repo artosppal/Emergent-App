@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { useContext } from "react";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
@@ -28,6 +29,7 @@ const WA_VERIFY_RESEND_COOLDOWN_S = 45;
 
 export default function Account() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const tabH = useContext(BottomTabBarHeightContext) ?? 64 + insets.bottom;
   const { user, logout, setUser, verifyPhoneRequest, verifyPhoneConfirm } = useAuth();
   const { showUpgrade } = useUpgrade();
@@ -348,6 +350,9 @@ export default function Account() {
               </Pressable>
             </>
           )}
+          <Pressable testID="compare-plans-link" onPress={() => router.push("/pricing")} style={styles.comparePlansLinkAmber}>
+            <Text style={styles.comparePlansLinkAmberText}>{t("account.comparePlans")}</Text>
+          </Pressable>
         </View>
       ) : (
         <View style={{ marginHorizontal: spacing.xl }}>
@@ -391,6 +396,9 @@ export default function Account() {
               <Text style={styles.promoCtaText}>{t("upgrade.cta")}</Text>
             </Pressable>
           </View>
+          <Pressable testID="compare-plans-link" onPress={() => router.push("/pricing")} style={styles.comparePlansLink}>
+            <Text style={styles.comparePlansLinkText}>{t("account.comparePlans")}</Text>
+          </Pressable>
         </View>
       )}
 
@@ -981,6 +989,10 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   promoCtaText: { fontFamily: font.bold, fontSize: fontSize.lg, color: "#78350F" },
+  comparePlansLink: { alignItems: "center", paddingVertical: spacing.md },
+  comparePlansLinkText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.muted },
+  comparePlansLinkAmber: { alignItems: "center", paddingTop: spacing.md },
+  comparePlansLinkAmberText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: "#B45309" },
   premiumCard: {
     marginHorizontal: spacing.xl,
     backgroundColor: "#FEF3C7",

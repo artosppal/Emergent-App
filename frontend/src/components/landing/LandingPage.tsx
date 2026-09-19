@@ -13,8 +13,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Button } from "@/src/components/ui";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
-
-const MAX_WIDTH = 1120;
+import { Nav, SectionHeading, Footer, sharedStyles } from "@/src/components/landing/shared";
 
 export function LandingPage() {
   const router = useRouter();
@@ -76,54 +75,10 @@ export function LandingPage() {
   );
 }
 
-// ---------------- Nav ----------------
-function Nav({ isWide, language, onToggleLanguage, onNavPress, onLogin, onSignup, t }: any) {
-  return (
-    <View style={styles.navBar}>
-      <View style={styles.navInner}>
-        <View style={styles.brandRow}>
-          <View style={styles.brandMark}>
-            <MaterialCommunityIcons name="bell-ring" size={20} color={colors.onBrandPrimary} />
-          </View>
-          <Text style={styles.brandName}>Notifin</Text>
-        </View>
-
-        {isWide && (
-          <View style={styles.navLinks}>
-            <Pressable onPress={() => onNavPress("features")}>
-              <Text style={styles.navLink}>{t("landing.navFeatures")}</Text>
-            </Pressable>
-            <Pressable onPress={() => onNavPress("how")}>
-              <Text style={styles.navLink}>{t("landing.navHow")}</Text>
-            </Pressable>
-            <Pressable onPress={() => onNavPress("pricing")}>
-              <Text style={styles.navLink}>{t("landing.navPricing")}</Text>
-            </Pressable>
-          </View>
-        )}
-
-        <View style={styles.navActions}>
-          <Pressable onPress={onToggleLanguage} style={styles.langPill} testID="landing-lang-toggle">
-            <Text style={styles.langPillText}>{language.toUpperCase()}</Text>
-          </Pressable>
-          {isWide && (
-            <Pressable onPress={onLogin} style={styles.navLoginBtn} testID="landing-nav-login">
-              <Text style={styles.navLoginText}>{t("landing.navLogin")}</Text>
-            </Pressable>
-          )}
-          <Pressable onPress={onSignup} style={styles.navSignupBtn} testID="landing-nav-signup">
-            <Text style={styles.navSignupText}>{t("landing.navSignup")}</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 // ---------------- Hero ----------------
 function Hero({ isWide, onSignup, onLogin, t }: any) {
   return (
-    <View style={[styles.section, { paddingTop: spacing["3xl"] }]}>
+    <View style={[sharedStyles.section, { paddingTop: spacing["3xl"] }]}>
       <View style={[styles.heroLayout, isWide && styles.heroLayoutWide]}>
         <View style={[styles.heroText, isWide && { maxWidth: 520 }]}>
           <View style={styles.eyebrow}>
@@ -200,8 +155,8 @@ function Features({ isWide, t }: any) {
     { icon: "account-group", title: t("landing.feature3Title"), body: t("landing.feature3Body") },
   ];
   return (
-    <View style={styles.sectionOuterAlt}>
-      <View style={styles.sectionInner}>
+    <View style={sharedStyles.sectionOuterAlt}>
+      <View style={sharedStyles.sectionInner}>
         <SectionHeading eyebrow={t("landing.featuresEyebrow")} title={t("landing.featuresTitle")} />
         <View style={[styles.cardGrid, isWide && styles.cardGridWide]}>
           {items.map((it) => (
@@ -227,7 +182,7 @@ function HowItWorks({ isWide, t }: any) {
     { title: t("landing.how3Title"), body: t("landing.how3Body") },
   ];
   return (
-    <View style={styles.section}>
+    <View style={sharedStyles.section}>
       <SectionHeading eyebrow={t("landing.howEyebrow")} title={t("landing.howTitle")} />
       <View style={[styles.cardGrid, isWide && styles.cardGridWide]}>
         {steps.map((s, i) => (
@@ -245,7 +200,22 @@ function HowItWorks({ isWide, t }: any) {
 }
 
 // ---------------- Pricing ----------------
-function Pricing({ isTablet, onSignup, t }: any) {
+// Reused as-is by the standalone /pricing page — onFreePress/onPremiumPress
+// default to onSignup (the landing page's original single-callback usage),
+// but a caller that already knows the visitor's plan (the pricing page, for
+// a logged-in user) can pass its own handlers and premiumActive to swap the
+// premium CTA for an "already on this plan" state instead.
+export function Pricing({
+  isTablet,
+  onSignup,
+  onFreePress,
+  onPremiumPress,
+  freeActive,
+  premiumActive,
+  eyebrow,
+  title,
+  t,
+}: any) {
   const freeItems = [t("landing.pricingFreeItem1"), t("landing.pricingFreeItem2"), t("landing.pricingFreeItem3")];
   const premiumItems = [
     t("landing.pricingPremiumItem1"),
@@ -254,9 +224,12 @@ function Pricing({ isTablet, onSignup, t }: any) {
     t("landing.pricingPremiumItem4"),
   ];
   return (
-    <View style={styles.sectionOuterAlt}>
-      <View style={styles.sectionInner}>
-        <SectionHeading eyebrow={t("landing.pricingEyebrow")} title={t("landing.pricingTitle")} />
+    <View style={sharedStyles.sectionOuterAlt}>
+      <View style={sharedStyles.sectionInner}>
+        <SectionHeading
+          eyebrow={eyebrow || t("landing.pricingEyebrow")}
+          title={title || t("landing.pricingTitle")}
+        />
         <View style={[styles.pricingRow, isTablet && styles.pricingRowWide]}>
           <View style={[styles.pricingCard, isTablet && styles.pricingCardRowFlex]}>
             <Text style={styles.pricingPlanTitle}>{t("landing.pricingFreeTitle")}</Text>
@@ -271,12 +244,19 @@ function Pricing({ isTablet, onSignup, t }: any) {
               ))}
             </View>
 
-            <Button
-              title={t("landing.pricingFreeCta")}
-              onPress={onSignup}
-              variant="secondary"
-              testID="landing-pricing-free-signup"
-            />
+            {freeActive ? (
+              <View style={styles.freeActivePill}>
+                <MaterialCommunityIcons name="check-decagram" size={18} color={colors.brand} />
+                <Text style={styles.freeActiveText}>{t("landing.pricingPremiumActive")}</Text>
+              </View>
+            ) : (
+              <Button
+                title={t("landing.pricingFreeCta")}
+                onPress={onFreePress || onSignup}
+                variant="secondary"
+                testID="landing-pricing-free-signup"
+              />
+            )}
           </View>
 
           <View
@@ -312,13 +292,20 @@ function Pricing({ isTablet, onSignup, t }: any) {
               ))}
             </View>
 
-            <Pressable
-              onPress={onSignup}
-              testID="landing-pricing-premium-signup"
-              style={({ pressed }) => [styles.goldButton, pressed && { opacity: 0.9 }]}
-            >
-              <Text style={styles.goldButtonText}>{t("landing.pricingPremiumCta")}</Text>
-            </Pressable>
+            {premiumActive ? (
+              <View style={styles.premiumActivePill}>
+                <MaterialCommunityIcons name="check-decagram" size={18} color="#FFFFFF" />
+                <Text style={styles.premiumActiveText}>{t("landing.pricingPremiumActive")}</Text>
+              </View>
+            ) : (
+              <Pressable
+                onPress={onPremiumPress || onSignup}
+                testID="landing-pricing-premium-signup"
+                style={({ pressed }) => [styles.goldButton, pressed && { opacity: 0.9 }]}
+              >
+                <Text style={styles.goldButtonText}>{t("landing.pricingPremiumCta")}</Text>
+              </Pressable>
+            )}
           </View>
         </View>
       </View>
@@ -342,7 +329,7 @@ function PricingItem({ label, inverted }: { label: string; inverted?: boolean })
 // ---------------- Final CTA ----------------
 function FinalCta({ onSignup, t }: any) {
   return (
-    <View style={styles.section}>
+    <View style={sharedStyles.section}>
       <View style={styles.ctaBanner}>
         <Text style={styles.ctaTitle}>{t("landing.ctaTitle")}</Text>
         <Text style={styles.ctaSubtitle}>{t("landing.ctaSubtitle")}</Text>
@@ -358,112 +345,8 @@ function FinalCta({ onSignup, t }: any) {
   );
 }
 
-// ---------------- Footer ----------------
-function Footer({ isTablet, router, t }: any) {
-  return (
-    <View style={styles.section}>
-      <View style={[styles.footerRow, isTablet && styles.footerRowWide]}>
-        <View style={{ maxWidth: 320 }}>
-          <View style={styles.brandRow}>
-            <View style={styles.brandMark}>
-              <MaterialCommunityIcons name="bell-ring" size={18} color={colors.onBrandPrimary} />
-            </View>
-            <Text style={styles.brandName}>Notifin</Text>
-          </View>
-          <Text style={styles.footerTagline}>{t("landing.footerTagline")}</Text>
-        </View>
-
-        <View style={styles.footerLinks}>
-          <Pressable onPress={() => router.push("/privacy")}>
-            <Text style={styles.footerLink}>{t("landing.footerPrivacy")}</Text>
-          </Pressable>
-          <Pressable onPress={() => router.push("/terms")}>
-            <Text style={styles.footerLink}>{t("landing.footerTerms")}</Text>
-          </Pressable>
-        </View>
-      </View>
-      <Text style={styles.footerCopyright}>
-        © {new Date().getFullYear()} Notifin. {t("landing.footerRights")}
-      </Text>
-    </View>
-  );
-}
-
-// ---------------- Shared ----------------
-function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
-  return (
-    <View style={styles.headingWrap}>
-      <Text style={styles.headingEyebrow}>{eyebrow}</Text>
-      <Text style={styles.headingTitle}>{title}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
-
-  navBar: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  navInner: {
-    width: "100%",
-    maxWidth: MAX_WIDTH,
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-  },
-  brandRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  brandMark: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    backgroundColor: colors.brand,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  brandName: { fontFamily: font.extrabold, fontSize: fontSize.lg, color: colors.onSurface },
-
-  navLinks: { flexDirection: "row", alignItems: "center", gap: spacing.xl },
-  navLink: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurfaceSecondary },
-
-  navActions: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  langPill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceTertiary,
-  },
-  langPillText: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.onSurfaceTertiary },
-  navLoginBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  navLoginText: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurface },
-  navSignupBtn: {
-    backgroundColor: colors.brand,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: radius.pill,
-  },
-  navSignupText: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onBrandPrimary },
-
-  section: {
-    width: "100%",
-    maxWidth: MAX_WIDTH,
-    alignSelf: "center",
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing["3xl"],
-  },
-  sectionOuterAlt: { width: "100%", backgroundColor: colors.surfaceTertiary },
-  sectionInner: {
-    width: "100%",
-    maxWidth: MAX_WIDTH,
-    alignSelf: "center",
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing["3xl"],
-  },
 
   heroLayout: { flexDirection: "column", alignItems: "center" },
   heroLayoutWide: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing["3xl"] },
@@ -521,22 +404,6 @@ const styles = StyleSheet.create({
   mockDivider: { height: 1, backgroundColor: colors.divider, marginVertical: spacing.md },
   mockTotalLabel: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.muted },
   mockTotalValue: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: colors.brand },
-
-  headingWrap: { alignItems: "center", marginBottom: spacing["2xl"] },
-  headingEyebrow: {
-    fontFamily: font.bold,
-    fontSize: fontSize.sm,
-    color: colors.brand,
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm,
-  },
-  headingTitle: {
-    fontFamily: font.extrabold,
-    fontSize: fontSize["2xl"],
-    color: colors.onSurface,
-    textAlign: "center",
-    maxWidth: 520,
-  },
 
   cardGrid: { flexDirection: "column", gap: spacing.lg },
   cardGridWide: { flexDirection: "row", gap: spacing.xl },
@@ -661,6 +528,27 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   goldButtonText: { fontFamily: font.bold, fontSize: fontSize.lg, color: "#78350F" },
+  premiumActivePill: {
+    height: 54,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.xl,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+  premiumActiveText: { fontFamily: font.bold, fontSize: fontSize.lg, color: "#FFFFFF" },
+  freeActivePill: {
+    height: 54,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.brandTertiary,
+  },
+  freeActiveText: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.brandDark },
 
   ctaBanner: {
     backgroundColor: colors.brand,
@@ -679,19 +567,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.base,
     color: "rgba(255,255,255,0.9)",
     marginTop: spacing.sm,
-    textAlign: "center",
-  },
-
-  footerRow: { flexDirection: "column", gap: spacing.xl },
-  footerRowWide: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  footerTagline: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: spacing.md, lineHeight: 19 },
-  footerLinks: { flexDirection: "row", gap: spacing.xl },
-  footerLink: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurfaceSecondary },
-  footerCopyright: {
-    fontFamily: font.regular,
-    fontSize: fontSize.sm,
-    color: colors.muted,
-    marginTop: spacing["2xl"],
     textAlign: "center",
   },
 });

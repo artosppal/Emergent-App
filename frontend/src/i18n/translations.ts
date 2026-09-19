@@ -211,6 +211,7 @@ export const translations = {
       errResume: "Gagal melanjutkan langganan, coba lagi",
       upgradeTitle: "Upgrade ke Premium",
       upgradeSubtitle: "Langganan tak terbatas, WhatsApp reminder & Family Sharing.",
+      comparePlans: "Bandingkan semua fitur paket →",
       premiumPromoBadge: "Premium",
       premiumPromoPriceSuffix: "/bulan",
       notificationsSection: "Notifikasi",
@@ -547,6 +548,7 @@ export const translations = {
       pricingPremiumItem3: "Berbagi grup & keluarga",
       pricingPremiumItem4: "Ringkasan bulanan otomatis",
       pricingPremiumCta: "Pilih Premium",
+      pricingPremiumActive: "Kamu di paket ini",
 
       ctaTitle: "Siap Rapikan Langgananmu?",
       ctaSubtitle: "Gratis buat mulai, cuma butuh 1 menit daftar.",
@@ -556,6 +558,52 @@ export const translations = {
       footerPrivacy: "Kebijakan Privasi",
       footerTerms: "Syarat & Ketentuan",
       footerRights: "Hak cipta dilindungi.",
+    },
+    pricingPage: {
+      backLink: "Kembali",
+      eyebrow: "HARGA",
+      title: "Satu Paket Lagi, Gak Ada Lagi Langganan yang Kelewat",
+      subtitle: "Mulai gratis buat sampai 3 langganan. Upgrade kapan saja kalau butuh lebih.",
+
+      compareEyebrow: "BANDINGKAN PAKET",
+      compareTitle: "Semua yang Kamu Dapat di Tiap Paket",
+      colFeature: "Fitur",
+      colFree: "Gratis",
+      colPremium: "Premium",
+      rowSubs: "Jumlah langganan aktif",
+      rowSubsFree: "Maks. 3",
+      rowSubsPremium: "Tanpa batas",
+      rowPush: "Pengingat notifikasi push",
+      rowDashboard: "Dashboard & analisis pengeluaran",
+      rowWa: "Pengingat WhatsApp",
+      rowWaFree: "5x/bulan",
+      rowWaPremium: "Tanpa batas",
+      rowCreateGroup: "Buat grup & bagi tagihan keluarga",
+      rowJoinGroup: "Gabung grup yang diundang",
+      rowPromo: "Rekomendasi promo gratis langganan",
+      rowSummary: "Ringkasan pengeluaran mingguan/bulanan",
+
+      faqEyebrow: "PERTANYAAN UMUM",
+      faqTitle: "Masih Ada yang Mau Ditanyakan?",
+      faq1Q: "Bisa cancel Premium kapan saja?",
+      faq1A:
+        "Bisa. Berhenti berlangganan lewat halaman Akun — kamu tetap Premium sampai akhir periode yang sudah dibayar, baru setelah itu kembali ke paket Gratis.",
+      faq2Q: "Metode pembayaran apa saja yang didukung?",
+      faq2A:
+        "Semua metode yang didukung Mayar.id: QRIS, e-wallet (GoPay, OVO, DANA, ShopeePay), transfer bank, dan kartu.",
+      faq3Q: "Kenapa paket Gratis dibatasi 3 langganan?",
+      faq3A:
+        "Biar Notifin tetap bisa dipakai siapa saja tanpa bayar. Langganan yang sudah ada tetap aman kalau kamu turun dari Premium — kamu cuma nggak bisa nambah baru sampai di bawah 3 lagi.",
+      faq4Q: "Paket Gratis dapat pengingat WhatsApp juga?",
+      faq4A:
+        "Dapat, sampai 5 kali per bulan setelah nomor WhatsApp-mu diverifikasi. Premium tidak ada batasnya.",
+      faq5Q: "Perlu Premium buat gabung grup keluarga?",
+      faq5A:
+        "Enggak — siapa saja bisa gabung grup pakai kode undangan, di paket apa pun. Premium cuma dibutuhkan buat yang mau membuat grup barunya.",
+
+      ctaTitle: "Siap Upgrade ke Premium?",
+      ctaSubtitleLoggedOut: "Daftar dulu, baru pilih paket yang cocok buatmu.",
+      ctaSubtitleFree: "Buka semua fitur Premium kapan saja, langsung dari sini.",
     },
   },
   en: {
@@ -767,6 +815,7 @@ export const translations = {
       errResume: "Failed to resume subscription, try again",
       upgradeTitle: "Upgrade to Premium",
       upgradeSubtitle: "Unlimited subscriptions, WhatsApp reminders & Family Sharing.",
+      comparePlans: "Compare all plan features →",
       premiumPromoBadge: "Premium",
       premiumPromoPriceSuffix: "/month",
       notificationsSection: "Notifications",
@@ -1102,6 +1151,7 @@ export const translations = {
       pricingPremiumItem3: "Group & family sharing",
       pricingPremiumItem4: "Automatic monthly summary",
       pricingPremiumCta: "Choose Premium",
+      pricingPremiumActive: "You're on this plan",
 
       ctaTitle: "Ready to Get Your Subscriptions in Order?",
       ctaSubtitle: "Free to start, sign up takes just 1 minute.",
@@ -1111,6 +1161,52 @@ export const translations = {
       footerPrivacy: "Privacy Policy",
       footerTerms: "Terms & Conditions",
       footerRights: "All rights reserved.",
+    },
+    pricingPage: {
+      backLink: "Back",
+      eyebrow: "PRICING",
+      title: "One More Plan, No More Missed Subscriptions",
+      subtitle: "Start free for up to 3 subscriptions. Upgrade anytime you need more.",
+
+      compareEyebrow: "COMPARE PLANS",
+      compareTitle: "Everything You Get on Each Plan",
+      colFeature: "Feature",
+      colFree: "Free",
+      colPremium: "Premium",
+      rowSubs: "Active subscriptions",
+      rowSubsFree: "Up to 3",
+      rowSubsPremium: "Unlimited",
+      rowPush: "Push notification reminders",
+      rowDashboard: "Spending dashboard & breakdown",
+      rowWa: "WhatsApp reminders",
+      rowWaFree: "5x/month",
+      rowWaPremium: "Unlimited",
+      rowCreateGroup: "Create a group & split family bills",
+      rowJoinGroup: "Join an invited group",
+      rowPromo: "Free-subscription promo picks",
+      rowSummary: "Weekly/monthly spending summary",
+
+      faqEyebrow: "FAQ",
+      faqTitle: "Still Have Questions?",
+      faq1Q: "Can I cancel Premium anytime?",
+      faq1A:
+        "Yes. Cancel from the Account page — you'll stay Premium until the end of your paid period, then move back to the Free plan.",
+      faq2Q: "What payment methods are supported?",
+      faq2A:
+        "Anything Mayar.id supports: QRIS, e-wallets (GoPay, OVO, DANA, ShopeePay), bank transfer, and cards.",
+      faq3Q: "Why is the Free plan capped at 3 subscriptions?",
+      faq3A:
+        "So Notifin stays usable for everyone without paying. Existing subscriptions stay safe if you drop from Premium — you just can't add new ones until you're back under 3.",
+      faq4Q: "Does the Free plan get WhatsApp reminders too?",
+      faq4A:
+        "Yes, up to 5 per month once your WhatsApp number is verified. Premium has no limit.",
+      faq5Q: "Do I need Premium to join a family group?",
+      faq5A:
+        "No — anyone can join a group with an invite code, on any plan. Premium is only needed to create a new group.",
+
+      ctaTitle: "Ready to Upgrade to Premium?",
+      ctaSubtitleLoggedOut: "Sign up first, then pick the plan that fits you.",
+      ctaSubtitleFree: "Unlock every Premium feature anytime, right from here.",
     },
   },
 } as const;
