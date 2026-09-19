@@ -3658,6 +3658,23 @@ async def startup():
         await db.promo_reminders.create_index("user_id")
     except Exception as e:
         logger.warning(f"index creation: {e}")
+
+    # One-time backfill: accounts created before the onboarding survey
+    # existed have no onboarding_completed field at all. Treat "field
+    # missing" as "already onboarded" so only genuinely new signups (which
+    # explicitly get onboarding_completed: False at creation) see the
+    # survey. Safe to run on every startup — it only ever touches docs
+    # still missing the field.
+    try:
+        res = await db.users.update_many(
+            {"onboarding_completed": {"$exists": False}},
+            {"$set": {"onboarding_completed": True}},
+        )
+        if res.modified_count:
+            logger.info(f"Backfilled onboarding_completed=true for {res.modified_count} existing user(s)")
+    except Exception as e:
+        logger.warning(f"onboarding_completed backfill: {e}")
+
     asyncio.create_task(scheduler_loop())
 
 
