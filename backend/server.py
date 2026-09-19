@@ -2821,24 +2821,10 @@ ADMIN_PAGE_HTML = """<!doctype html>
   .pill-free { background: #E8F0EC; color: #233B33; }
   .btn-toggle { background: #E8F0EC; color: #182924; white-space: nowrap; }
   .btn-toggle:disabled { opacity: 0.5; cursor: default; }
-  .row-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  .chip {
-    font-size: 12px; color: #374151; background: #F3F4F6; padding: 5px 10px 5px 5px;
-    border-radius: 8px; display: flex; align-items: center; gap: 6px; white-space: nowrap;
-  }
-  .chip-label {
-    color: #9CA3AF; font-weight: 700; font-size: 10px; text-transform: uppercase;
-    letter-spacing: 0.03em; background: #fff; padding: 3px 7px; border-radius: 6px;
-  }
-  .chip-ok { background: #ECFDF5; color: #047857; }
-  .chip-ok .chip-label { color: #059669; }
-  .chip-warn { background: #FFFBEB; color: #92400E; }
-  .chip-warn .chip-label { color: #B45309; }
-  .chip-danger { background: #FEF2F2; color: #991B1B; }
-  .chip-danger .chip-label { color: #DC2626; }
-  .row-survey { margin-top: 4px; padding-top: 10px; border-top: 1px dashed #E5E7EB; }
-  .chip-survey { background: #EEF2FF; color: #3730A3; }
-  .chip-survey .chip-label { color: #4F46E5; }
+  .tag { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .tag-ok { background: #ECFDF5; color: #047857; }
+  .tag-warn { background: #FFFBEB; color: #92400E; }
+  .tag-danger { background: #FEF2F2; color: #991B1B; }
 
   .table-wrap { overflow-x: auto; margin: 0 -4px; }
   .acc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -2852,17 +2838,63 @@ ADMIN_PAGE_HTML = """<!doctype html>
   .acc-table th .sort-ind { display: inline-block; width: 10px; opacity: 0.45; font-size: 10px; }
   .acc-table th.sort-active { color: #059669; }
   .acc-table th.sort-active .sort-ind { opacity: 1; }
-  .acc-table td { padding: 12px; border-bottom: 1px solid #F3F4F6; vertical-align: top; }
+  .acc-table td { padding: 12px; border-bottom: 1px solid #F3F4F6; vertical-align: top; white-space: nowrap; }
   .acc-table tr.data-row:hover td { background: #F9FAFB; }
-  .acc-table tr.meta-row td { padding: 0 12px 14px; }
-  .acc-table tr.meta-row .row-meta { margin-top: 0; }
   .acc-table .col-check { width: 34px; }
-  .acc-table .col-actions { width: 1%; }
-  .acc-table .cell-name { font-weight: 700; color: #182924; white-space: nowrap; }
+  .acc-table .col-actions { width: 1%; white-space: normal; }
+  .acc-table .cell-name { font-weight: 700; color: #182924; }
   .acc-table .cell-email { color: #6B7280; }
   .acc-table .row-actions { flex-direction: column; margin-top: 0; }
   .acc-table .row-actions button { width: 100%; min-width: 96px; font-size: 12px; padding: 7px 10px; }
   .acc-table .empty { text-align: center; color: #6B7280; padding: 20px 0; }
+  .row-avatar {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 8px; font-size: 10px; font-weight: 800;
+    color: #182924; margin-right: 8px; vertical-align: middle;
+  }
+
+  /* Optional columns toggled via the "Kolom" picker — hiding one just adds
+     a class to the table itself, so this is one CSS rule instead of a
+     re-render every time a checkbox flips. */
+  .acc-table.hide-subs .col-subs,
+  .acc-table.hide-active .col-active,
+  .acc-table.hide-premsince .col-premsince,
+  .acc-table.hide-renew .col-renew,
+  .acc-table.hide-usecase .col-usecase,
+  .acc-table.hide-subrange .col-subrange,
+  .acc-table.hide-referral .col-referral,
+  .acc-table.hide-goal .col-goal,
+  .acc-table.hide-deleted .col-deleted { display: none; }
+
+  .toolbar-filters { display: flex; gap: 8px; }
+  .filter-select {
+    width: auto; margin-bottom: 0; padding: 8px 12px; border-radius: 10px;
+    border: 1.5px solid #D1D5DB; font-size: 13px; font-weight: 700; color: #374151;
+    background: #fff; cursor: pointer;
+  }
+  .col-picker { position: relative; }
+  .col-picker-btn { display: inline-flex; align-items: center; gap: 6px; }
+  .col-picker-panel {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+    background: #FFFFFF; border-radius: 12px; padding: 8px; min-width: 210px;
+    box-shadow: 0 16px 32px -16px rgba(11,61,46,0.35); border: 1px solid #F3F4F6;
+    flex-direction: column; gap: 1px;
+  }
+  .col-picker-panel label {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600;
+    color: #374151; padding: 7px 8px; border-radius: 8px; cursor: pointer;
+  }
+  .col-picker-panel label:hover { background: #F3F4F6; }
+  .col-picker-panel input { width: auto; margin: 0; }
+  .table-pagination {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #F3F4F6;
+  }
+  .pagination-size { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B7280; font-weight: 600; }
+  .pagination-info { font-size: 12px; color: #6B7280; }
+  .pagination-nav { display: flex; gap: 8px; }
+  .btn-page { background: #E8F0EC; color: #182924; font-size: 12px; padding: 8px 14px; }
+  .btn-page:disabled { opacity: 0.45; cursor: default; }
   #app { display: none; }
   .top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
   .logout { background: none; color: #6B7280; font-weight: 600; padding: 4px; }
@@ -3193,6 +3225,29 @@ ADMIN_PAGE_HTML = """<!doctype html>
         <input type="checkbox" id="select-all-checkbox" onchange="onSelectAll(this.checked)" />
         Pilih semua
       </label>
+      <div class="toolbar-filters">
+        <select id="plan-filter" class="filter-select" onchange="onPlanFilterChange()">
+          <option value="">Semua Plan</option>
+          <option value="free">Free</option>
+          <option value="premium">Premium</option>
+        </select>
+        <div class="col-picker">
+          <button type="button" class="filter-select col-picker-btn" onclick="toggleColPicker()">
+            Kolom <span id="col-picker-caret">&#9662;</span>
+          </button>
+          <div class="col-picker-panel" id="col-picker-panel" style="display:none">
+            <label><input type="checkbox" data-col="subs" checked onchange="onColToggle(this)" /> Langganan</label>
+            <label><input type="checkbox" data-col="active" checked onchange="onColToggle(this)" /> Aktif</label>
+            <label><input type="checkbox" data-col="premsince" checked onchange="onColToggle(this)" /> Premium Sejak</label>
+            <label><input type="checkbox" data-col="renew" checked onchange="onColToggle(this)" /> Renew</label>
+            <label><input type="checkbox" data-col="usecase" checked onchange="onColToggle(this)" /> Untuk Siapa</label>
+            <label><input type="checkbox" data-col="subrange" checked onchange="onColToggle(this)" /> Jml Langganan (Survei)</label>
+            <label><input type="checkbox" data-col="referral" checked onchange="onColToggle(this)" /> Tahu Dari</label>
+            <label><input type="checkbox" data-col="goal" checked onchange="onColToggle(this)" /> Tujuan</label>
+            <label><input type="checkbox" data-col="deleted" onchange="onColToggle(this)" /> Dihapus</label>
+          </div>
+        </div>
+      </div>
       <div class="toolbar-actions">
         <button class="btn-export" id="export-selected-btn" onclick="exportSelected()" disabled>
           Export Terpilih (0)
@@ -3210,11 +3265,35 @@ ADMIN_PAGE_HTML = """<!doctype html>
             <th class="sortable" data-key="phone" onclick="setSort('phone')">No. WhatsApp <span class="sort-ind">&#8597;</span></th>
             <th class="sortable" data-key="plan" onclick="setSort('plan')">Plan <span class="sort-ind">&#8597;</span></th>
             <th class="sortable sort-active" data-key="created_at" onclick="setSort('created_at')">Tgl Daftar <span class="sort-ind">&#9660;</span></th>
+            <th class="sortable col-subs" data-key="subscription_count" onclick="setSort('subscription_count')">Langganan <span class="sort-ind">&#8597;</span></th>
+            <th class="col-active">Aktif</th>
+            <th class="col-premsince">Premium Sejak</th>
+            <th class="col-renew">Renew</th>
+            <th class="col-usecase">Untuk Siapa</th>
+            <th class="col-subrange">Jml Langganan (Survei)</th>
+            <th class="col-referral">Tahu Dari</th>
+            <th class="col-goal">Tujuan</th>
+            <th class="col-deleted">Dihapus</th>
             <th class="col-actions">Aksi</th>
           </tr>
         </thead>
         <tbody id="list"></tbody>
       </table>
+    </div>
+    <div class="table-pagination">
+      <div class="pagination-size">
+        <span>Baris per halaman</span>
+        <select id="page-size-select" class="filter-select" onchange="onPageSizeChange()">
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+        </select>
+      </div>
+      <div class="pagination-info" id="pagination-info">Menampilkan 0 dari 0</div>
+      <div class="pagination-nav">
+        <button class="btn-page" id="page-prev" onclick="goPage(-1)">&larr; Sebelumnya</button>
+        <button class="btn-page" id="page-next" onclick="goPage(1)">Berikutnya &rarr;</button>
+      </div>
     </div>
     </div>
   </div>
@@ -3341,6 +3420,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
         errEl.textContent = data.detail || 'Gagal memuat daftar akun';
         return;
       }
+      pageIndex = 0;
       renderList(data.users);
     } catch (e) {
       errEl.textContent = 'Tidak bisa menghubungi server.';
@@ -3646,10 +3726,6 @@ ADMIN_PAGE_HTML = """<!doctype html>
     return Math.round(hours / 24) + ' hari lalu';
   }
 
-  function chip(label, value, cls) {
-    return '<div class="chip ' + (cls || '') + '"><span class="chip-label">' + label + '</span>' + escapeHtml(String(value)) + '</div>';
-  }
-
   function toggleSelect(uid, checked) {
     if (checked) selected.add(uid); else selected.delete(uid);
     updateExportUi();
@@ -3717,15 +3793,66 @@ ADMIN_PAGE_HTML = """<!doctype html>
   // the admin actually clicks a header.
   let sortKey = 'created_at';
   let sortDir = 'desc';
+  let planFilter = '';
+  let pageSize = 10;
+  let pageIndex = 0;
 
   function sortComparableValue(u, key) {
     if (key === 'plan') return u.plan === 'premium' ? 1 : 0;
     if (key === 'created_at') return u.created_at || '';
+    if (key === 'subscription_count') return u.subscription_count || 0;
     return (u[key] || '').toString().toLowerCase();
   }
 
+  // Column visibility ("Kolom" picker) — toggling a checkbox just adds/removes
+  // a class on <table>, and the choice is remembered per-browser so the admin
+  // doesn't have to re-hide the same columns every visit.
+  const COL_PREFS_KEY = 'notifin_admin_cols';
+
+  function toggleColPicker() {
+    const panel = document.getElementById('col-picker-panel');
+    if (!panel) return;
+    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+  }
+
+  document.addEventListener('click', (e) => {
+    const picker = document.querySelector('.col-picker');
+    const panel = document.getElementById('col-picker-panel');
+    if (picker && panel && panel.style.display !== 'none' && !picker.contains(e.target)) {
+      panel.style.display = 'none';
+    }
+  });
+
+  function saveColPrefs() {
+    const prefs = {};
+    document.querySelectorAll('#col-picker-panel input[type=checkbox]').forEach((cb) => {
+      prefs[cb.getAttribute('data-col')] = cb.checked;
+    });
+    try { localStorage.setItem(COL_PREFS_KEY, JSON.stringify(prefs)); } catch (e) {}
+  }
+
+  function onColToggle(cb) {
+    const table = document.querySelector('.acc-table');
+    if (table) table.classList.toggle('hide-' + cb.getAttribute('data-col'), !cb.checked);
+    saveColPrefs();
+  }
+
+  function loadColPrefs() {
+    let prefs = {};
+    try { prefs = JSON.parse(localStorage.getItem(COL_PREFS_KEY) || '{}'); } catch (e) {}
+    const table = document.querySelector('.acc-table');
+    document.querySelectorAll('#col-picker-panel input[type=checkbox]').forEach((cb) => {
+      const col = cb.getAttribute('data-col');
+      if (Object.prototype.hasOwnProperty.call(prefs, col)) cb.checked = prefs[col];
+      if (table) table.classList.toggle('hide-' + col, !cb.checked);
+    });
+  }
+  loadColPrefs();
+
   function sortedUsers() {
-    const list = currentUsers.slice();
+    const list = currentUsers
+      .filter((u) => !planFilter || u.plan === planFilter)
+      .slice();
     list.sort((a, b) => {
       const av = sortComparableValue(a, sortKey);
       const bv = sortComparableValue(b, sortKey);
@@ -3743,8 +3870,40 @@ ADMIN_PAGE_HTML = """<!doctype html>
       sortKey = key;
       sortDir = 'asc';
     }
+    pageIndex = 0;
     renderTable();
     updateSortIndicators();
+  }
+
+  function onPlanFilterChange() {
+    planFilter = document.getElementById('plan-filter').value;
+    pageIndex = 0;
+    renderTable();
+  }
+
+  function onPageSizeChange() {
+    pageSize = parseInt(document.getElementById('page-size-select').value, 10) || 10;
+    pageIndex = 0;
+    renderTable();
+  }
+
+  function goPage(delta) {
+    pageIndex = Math.max(0, pageIndex + delta);
+    renderTable();
+  }
+
+  function initials(name) {
+    const s = (name || 'U').trim();
+    if (!s) return 'U';
+    return s.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+  }
+
+  const AVATAR_PALETTE = ['#D1FAE5', '#FEF3C7', '#DBEAFE', '#EDE9FE', '#FCE7F3'];
+  function avatarColor(seed) {
+    const s = String(seed || '');
+    let sum = 0;
+    for (let i = 0; i < s.length; i++) sum += s.charCodeAt(i);
+    return AVATAR_PALETTE[sum % AVATAR_PALETTE.length];
   }
 
   function updateSortIndicators() {
@@ -3765,33 +3924,21 @@ ADMIN_PAGE_HTML = """<!doctype html>
 
   function renderTable() {
     const list = document.getElementById('list');
-    const users = sortedUsers();
+    const filtered = sortedUsers();
+    const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+    pageIndex = Math.min(pageIndex, pageCount - 1);
+    const pageStart = pageIndex * pageSize;
+    const users = filtered.slice(pageStart, pageStart + pageSize);
+    updatePaginationUi(filtered.length, pageStart, users.length);
     if (!users.length) {
-      list.innerHTML = '<tr><td colspan="7" class="empty">Tidak ada akun ditemukan.</td></tr>';
+      list.innerHTML = '<tr><td colspan="16" class="empty">Tidak ada akun ditemukan.</td></tr>';
       updateExportUi();
       return;
     }
     list.innerHTML = users.map((u) => {
       const isPremium = u.plan === 'premium';
       const renewal = isPremium ? renewalInfo(u.premium_expires_at) : null;
-      let meta = '';
-      if (isPremium) {
-        meta += chip('Premium sejak', fmtDate(u.premium_since));
-        meta += chip('Renew', renewal.text, renewal.cls);
-      }
-      meta += chip('Langganan', u.subscription_count);
-      meta += chip('Aktif', lastActiveText(u.last_active_at));
-      if (showTrash) meta += chip('Dihapus', fmtDate(u.deleted_at), 'chip-danger');
-
-      const hasSurvey = u.onboarding_use_case || u.onboarding_sub_range ||
-        u.onboarding_referral_source || u.onboarding_primary_goal;
-      let survey = '';
-      if (hasSurvey) {
-        survey += chip('Untuk siapa', ONBOARDING_USE_CASE_LABELS[u.onboarding_use_case] || '-', 'chip-survey');
-        survey += chip('Jml langganan', u.onboarding_sub_range || '-', 'chip-survey');
-        survey += chip('Tahu dari', ONBOARDING_REFERRAL_LABELS[u.onboarding_referral_source] || '-', 'chip-survey');
-        survey += chip('Tujuan', ONBOARDING_GOAL_LABELS[u.onboarding_primary_goal] || '-', 'chip-survey');
-      }
+      const renewTagCls = renewal ? renewal.cls.replace('chip-', 'tag-') : '';
       const checked = selected.has(u.user_id) ? 'checked' : '';
       const uidAttr = 'data-uid="' + u.user_id + '"';
       const emailAttr = 'data-email="' + escapeHtml(u.email || '').replace(/"/g, '&quot;') + '"';
@@ -3818,23 +3965,42 @@ ADMIN_PAGE_HTML = """<!doctype html>
         '<tr class="data-row">' +
           '<td class="col-check"><input type="checkbox" class="row-checkbox" data-uid="' + u.user_id + '" ' + checked +
             ' onchange="toggleSelect(this.getAttribute(&quot;data-uid&quot;), this.checked)" /></td>' +
-          '<td class="cell-name">' + escapeHtml(u.name || '(tanpa nama)') + '</td>' +
+          '<td class="cell-name"><span class="row-avatar" style="background:' + avatarColor(u.user_id) + '">' +
+            escapeHtml(initials(u.name)) + '</span>' + escapeHtml(u.name || '(tanpa nama)') + '</td>' +
           '<td class="cell-email">' + escapeHtml(u.email || '') + '</td>' +
           '<td>' + (u.phone ? '+' + escapeHtml(u.phone) : '-') + '</td>' +
           '<td><span class="pill ' + (isPremium ? 'pill-premium' : 'pill-free') + '">' +
             (isPremium ? 'Premium' : 'Free') + '</span></td>' +
           '<td>' + fmtDate(u.created_at) + '</td>' +
+          '<td class="col-subs">' + u.subscription_count + '</td>' +
+          '<td class="col-active">' + escapeHtml(lastActiveText(u.last_active_at)) + '</td>' +
+          '<td class="col-premsince">' + (isPremium ? fmtDate(u.premium_since) : '-') + '</td>' +
+          '<td class="col-renew">' + (isPremium
+            ? '<span class="tag ' + renewTagCls + '">' + escapeHtml(renewal.text) + '</span>'
+            : '-') + '</td>' +
+          '<td class="col-usecase">' + escapeHtml(ONBOARDING_USE_CASE_LABELS[u.onboarding_use_case] || '-') + '</td>' +
+          '<td class="col-subrange">' + escapeHtml(u.onboarding_sub_range || '-') + '</td>' +
+          '<td class="col-referral">' + escapeHtml(ONBOARDING_REFERRAL_LABELS[u.onboarding_referral_source] || '-') + '</td>' +
+          '<td class="col-goal">' + escapeHtml(ONBOARDING_GOAL_LABELS[u.onboarding_primary_goal] || '-') + '</td>' +
+          '<td class="col-deleted">' + (u.deleted_at ? fmtDate(u.deleted_at) : '-') + '</td>' +
           '<td class="col-actions"><div class="row-actions">' + actions + '</div></td>' +
-        '</tr>' +
-        '<tr class="meta-row">' +
-          '<td colspan="7">' +
-            '<div class="row-meta">' + meta + '</div>' +
-            (hasSurvey ? '<div class="row-meta row-survey">' + survey + '</div>' : '') +
-          '</td>' +
         '</tr>'
       );
     }).join('');
     updateExportUi();
+  }
+
+  function updatePaginationUi(total, pageStart, shown) {
+    const info = document.getElementById('pagination-info');
+    if (info) {
+      info.textContent = total === 0
+        ? 'Menampilkan 0 dari 0'
+        : 'Menampilkan ' + (pageStart + 1) + '-' + (pageStart + shown) + ' dari ' + total;
+    }
+    const prev = document.getElementById('page-prev');
+    const next = document.getElementById('page-next');
+    if (prev) prev.disabled = pageIndex === 0;
+    if (next) next.disabled = pageStart + shown >= total;
   }
 
   async function togglePlan(btn) {
