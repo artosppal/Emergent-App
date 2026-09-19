@@ -2778,6 +2778,30 @@ ADMIN_PAGE_HTML = """<!doctype html>
   .row-survey { margin-top: 4px; padding-top: 10px; border-top: 1px dashed #E5E7EB; }
   .chip-survey { background: #EEF2FF; color: #3730A3; }
   .chip-survey .chip-label { color: #4F46E5; }
+
+  .table-wrap { overflow-x: auto; margin: 0 -4px; }
+  .acc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .acc-table th {
+    text-align: left; font-size: 11px; font-weight: 700; color: #6B7280;
+    text-transform: uppercase; letter-spacing: 0.04em; padding: 10px 12px;
+    border-bottom: 2px solid #E5E7EB; white-space: nowrap;
+  }
+  .acc-table th.sortable { cursor: pointer; user-select: none; }
+  .acc-table th.sortable:hover { color: #059669; }
+  .acc-table th .sort-ind { display: inline-block; width: 10px; opacity: 0.45; font-size: 10px; }
+  .acc-table th.sort-active { color: #059669; }
+  .acc-table th.sort-active .sort-ind { opacity: 1; }
+  .acc-table td { padding: 12px; border-bottom: 1px solid #F3F4F6; vertical-align: top; }
+  .acc-table tr.data-row:hover td { background: #F9FAFB; }
+  .acc-table tr.meta-row td { padding: 0 12px 14px; }
+  .acc-table tr.meta-row .row-meta { margin-top: 0; }
+  .acc-table .col-check { width: 34px; }
+  .acc-table .col-actions { width: 1%; }
+  .acc-table .cell-name { font-weight: 700; color: #182924; white-space: nowrap; }
+  .acc-table .cell-email { color: #6B7280; }
+  .acc-table .row-actions { flex-direction: column; margin-top: 0; }
+  .acc-table .row-actions button { width: 100%; min-width: 96px; font-size: 12px; padding: 7px 10px; }
+  .acc-table .empty { text-align: center; color: #6B7280; padding: 20px 0; }
   #app { display: none; }
   .top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
   .logout { background: none; color: #6B7280; font-weight: 600; padding: 4px; }
@@ -2837,9 +2861,16 @@ ADMIN_PAGE_HTML = """<!doctype html>
 
   /* Shell: shared header + top-level nav between Akun / Promo */
   #shell { display: none; width: 100%; max-width: 720px; }
+  #shell.is-open { display: block; }
   .shell-header {
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 16px;
+  }
+  .shell-brand { display: flex; align-items: center; gap: 10px; }
+  .shell-brand-badge {
+    width: 34px; height: 34px; border-radius: 10px; background: #059669;
+    color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px;
+    flex-shrink: 0;
   }
   .main-nav {
     display: flex; gap: 8px; background: #FFFFFF; border-radius: 16px; padding: 6px;
@@ -2852,6 +2883,42 @@ ADMIN_PAGE_HTML = """<!doctype html>
   .main-nav-item.active { background: #059669; color: #fff; }
   .panel-section { display: none; }
   .panel-section.active { display: block; }
+
+  /* Desktop/PC browser: left sidebar (brand + nav + logout) instead of the
+     stacked mobile header, with the active panel taking the rest of the
+     width. `.sidebar`/`.main-content` are plain block wrappers on mobile
+     (identical to the old unwrapped markup), so nothing changes below this
+     breakpoint. */
+  @media (min-width: 900px) {
+    body { align-items: flex-start; }
+    #shell.is-open {
+      display: flex;
+      align-items: flex-start;
+      gap: 40px;
+      max-width: 1180px;
+      margin: 40px auto;
+    }
+    .sidebar { width: 240px; flex-shrink: 0; position: sticky; top: 40px; }
+    .main-content { flex: 1; min-width: 0; }
+    .shell-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 14px;
+      padding-bottom: 20px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #E5E7EB;
+    }
+    .shell-header h1 { font-size: 18px; }
+    .shell-header .logout {
+      padding: 8px 0; font-size: 13px; font-weight: 700; color: #EF4444;
+    }
+    .main-nav {
+      flex-direction: column; background: transparent; box-shadow: none;
+      padding: 0; gap: 3px; margin-bottom: 0;
+    }
+    .main-nav-item { text-align: left; padding: 11px 14px; }
+    .main-content .card.wide { max-width: 100%; }
+  }
 
   /* Promo cards */
   .promo-row {
@@ -2889,17 +2956,23 @@ ADMIN_PAGE_HTML = """<!doctype html>
 </div>
 
 <div id="shell">
-  <div class="shell-header">
-    <h1>Notifin Admin</h1>
-    <button class="logout" onclick="logout()">Keluar</button>
+  <div class="sidebar">
+    <div class="shell-header">
+      <div class="shell-brand">
+        <div class="shell-brand-badge">&#128276;</div>
+        <h1>Notifin Admin</h1>
+      </div>
+      <button class="logout" onclick="logout()">Keluar</button>
+    </div>
+
+    <div class="main-nav">
+      <div class="main-nav-item active" id="main-tab-accounts" onclick="switchMainTab('accounts')">Kelola Akun</div>
+      <div class="main-nav-item" id="main-tab-promo" onclick="switchMainTab('promo')">Rekomendasi Promo</div>
+      <div class="main-nav-item" id="main-tab-whatsnew" onclick="switchMainTab('whatsnew')">Apa yang Baru</div>
+    </div>
   </div>
 
-  <div class="main-nav">
-    <div class="main-nav-item active" id="main-tab-accounts" onclick="switchMainTab('accounts')">Kelola Akun</div>
-    <div class="main-nav-item" id="main-tab-promo" onclick="switchMainTab('promo')">Rekomendasi Promo</div>
-    <div class="main-nav-item" id="main-tab-whatsnew" onclick="switchMainTab('whatsnew')">Apa yang Baru</div>
-  </div>
-
+  <div class="main-content">
   <div class="card wide panel-section active" id="panel-accounts">
     <p class="sub">Cari akun berdasarkan email atau nama, ubah status Premium, atau kelola akun.</p>
 
@@ -2955,7 +3028,22 @@ ADMIN_PAGE_HTML = """<!doctype html>
         <button class="btn-export btn-export-all" onclick="exportAll()">Export Semua (.xlsx)</button>
       </div>
     </div>
-    <div id="list"></div>
+    <div class="table-wrap">
+      <table class="acc-table">
+        <thead>
+          <tr>
+            <th class="col-check"></th>
+            <th class="sortable" data-key="name" onclick="setSort('name')">Nama <span class="sort-ind">&#8597;</span></th>
+            <th class="sortable" data-key="email" onclick="setSort('email')">Email <span class="sort-ind">&#8597;</span></th>
+            <th class="sortable" data-key="phone" onclick="setSort('phone')">No. WhatsApp <span class="sort-ind">&#8597;</span></th>
+            <th class="sortable" data-key="plan" onclick="setSort('plan')">Plan <span class="sort-ind">&#8597;</span></th>
+            <th class="sortable sort-active" data-key="created_at" onclick="setSort('created_at')">Tgl Daftar <span class="sort-ind">&#9660;</span></th>
+            <th class="col-actions">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="list"></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="card wide panel-section" id="panel-promo">
@@ -2988,6 +3076,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
       <button class="btn-primary" id="wn-submit-btn" onclick="submitWhatsNew()" style="width:auto">Tambah</button>
     </div>
     <div id="wn-list"></div>
+  </div>
   </div>
 </div>
 
@@ -3031,7 +3120,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
       if (!res.ok) { errEl.textContent = data.detail || 'Gagal masuk'; return; }
       token = data.token;
       document.getElementById('login-card').style.display = 'none';
-      document.getElementById('shell').style.display = 'block';
+      document.getElementById('shell').classList.add('is-open');
       loadUsers('');
       loadPromos();
       loadWhatsNew();
@@ -3044,7 +3133,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
 
   function logout() {
     token = null;
-    document.getElementById('shell').style.display = 'none';
+    document.getElementById('shell').classList.remove('is-open');
     document.getElementById('login-card').style.display = 'block';
     document.getElementById('password').value = '';
   }
@@ -3363,23 +3452,75 @@ ADMIN_PAGE_HTML = """<!doctype html>
     downloadXlsx(Array.from(selected));
   }
 
+  // Sorting is client-side over whatever page of users is already loaded
+  // (the API caps at 50) — clicking a header re-sorts that same array and
+  // re-renders, no extra fetch. Default matches the server's own order
+  // (newest signup first) so switching to the table changes nothing until
+  // the admin actually clicks a header.
+  let sortKey = 'created_at';
+  let sortDir = 'desc';
+
+  function sortComparableValue(u, key) {
+    if (key === 'plan') return u.plan === 'premium' ? 1 : 0;
+    if (key === 'created_at') return u.created_at || '';
+    return (u[key] || '').toString().toLowerCase();
+  }
+
+  function sortedUsers() {
+    const list = currentUsers.slice();
+    list.sort((a, b) => {
+      const av = sortComparableValue(a, sortKey);
+      const bv = sortComparableValue(b, sortKey);
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }
+
+  function setSort(key) {
+    if (sortKey === key) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortKey = key;
+      sortDir = 'asc';
+    }
+    renderTable();
+    updateSortIndicators();
+  }
+
+  function updateSortIndicators() {
+    document.querySelectorAll('.acc-table th.sortable').forEach((th) => {
+      const key = th.getAttribute('data-key');
+      const ind = th.querySelector('.sort-ind');
+      const active = key === sortKey;
+      th.classList.toggle('sort-active', active);
+      if (ind) ind.textContent = active ? (sortDir === 'asc' ? '▲' : '▼') : '↕';
+    });
+  }
+
   function renderList(users) {
     currentUsers = users;
+    renderTable();
+    updateSortIndicators();
+  }
+
+  function renderTable() {
     const list = document.getElementById('list');
+    const users = sortedUsers();
     if (!users.length) {
-      list.innerHTML = '<div class="empty">Tidak ada akun ditemukan.</div>';
+      list.innerHTML = '<tr><td colspan="7" class="empty">Tidak ada akun ditemukan.</td></tr>';
       updateExportUi();
       return;
     }
     list.innerHTML = users.map((u) => {
       const isPremium = u.plan === 'premium';
       const renewal = isPremium ? renewalInfo(u.premium_expires_at) : null;
-      let meta = chip('Daftar', fmtDate(u.created_at));
+      let meta = '';
       if (isPremium) {
         meta += chip('Premium sejak', fmtDate(u.premium_since));
         meta += chip('Renew', renewal.text, renewal.cls);
       }
-      meta += chip('WA', u.phone ? '+' + u.phone : '-');
       meta += chip('Langganan', u.subscription_count);
       meta += chip('Aktif', lastActiveText(u.last_active_at));
       if (showTrash) meta += chip('Dihapus', fmtDate(u.deleted_at), 'chip-danger');
@@ -3416,21 +3557,23 @@ ADMIN_PAGE_HTML = """<!doctype html>
           );
 
       return (
-        '<div class="row">' +
-          '<div class="row-top">' +
-            '<input type="checkbox" class="row-checkbox" data-uid="' + u.user_id + '" ' + checked + ' onchange="toggleSelect(this.getAttribute(&quot;data-uid&quot;), this.checked)" />' +
-            '<div class="info">' +
-              '<div class="name">' + escapeHtml(u.name || '(tanpa nama)') + '</div>' +
-              '<div class="email">' + escapeHtml(u.email || '') + '</div>' +
-            '</div>' +
-            '<span class="pill ' + (isPremium ? 'pill-premium' : 'pill-free') + '">' +
-              (isPremium ? 'Premium' : 'Free') +
-            '</span>' +
-          '</div>' +
-          '<div class="row-meta">' + meta + '</div>' +
-          (hasSurvey ? '<div class="row-meta row-survey">' + survey + '</div>' : '') +
-          '<div class="row-actions">' + actions + '</div>' +
-        '</div>'
+        '<tr class="data-row">' +
+          '<td class="col-check"><input type="checkbox" class="row-checkbox" data-uid="' + u.user_id + '" ' + checked +
+            ' onchange="toggleSelect(this.getAttribute(&quot;data-uid&quot;), this.checked)" /></td>' +
+          '<td class="cell-name">' + escapeHtml(u.name || '(tanpa nama)') + '</td>' +
+          '<td class="cell-email">' + escapeHtml(u.email || '') + '</td>' +
+          '<td>' + (u.phone ? '+' + escapeHtml(u.phone) : '-') + '</td>' +
+          '<td><span class="pill ' + (isPremium ? 'pill-premium' : 'pill-free') + '">' +
+            (isPremium ? 'Premium' : 'Free') + '</span></td>' +
+          '<td>' + fmtDate(u.created_at) + '</td>' +
+          '<td class="col-actions"><div class="row-actions">' + actions + '</div></td>' +
+        '</tr>' +
+        '<tr class="meta-row">' +
+          '<td colspan="7">' +
+            '<div class="row-meta">' + meta + '</div>' +
+            (hasSurvey ? '<div class="row-meta row-survey">' + survey + '</div>' : '') +
+          '</td>' +
+        '</tr>'
       );
     }).join('');
     updateExportUi();
