@@ -5,6 +5,15 @@ from datetime import date, timedelta
 import pytest
 import requests
 
+# Several classes share cross-class state via the session-scoped free_user
+# fixture (e.g. TestSubscriptionsAndFreemium creates subs that TestDashboard
+# and TestCleanup then read back). Under the project's --dist loadgroup,
+# xdist_group pins every test in this module to one worker so that sharing
+# is safe — without it, classes can land on different workers, each with
+# its own copy of "session"-scoped fixtures, and the dependent assertions
+# fail nondeterministically depending on the split (see pytest.ini).
+pytestmark = pytest.mark.xdist_group("notifin_backend_module")
+
 BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL")
             or "https://notifin-preview.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
@@ -30,13 +39,15 @@ def auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def register_verified(s, email, password, name):
+def register_verified(s, email, password, name, referral_code=None):
     """Full register -> verify flow. Registration is OTP-gated (see
     docs/email-otp.md); in local/simulation mode (no RESEND_API_KEY) the
     backend echoes the code as `dev_code` on the /auth/register response
     specifically so tests and local dev can complete the flow."""
-    r = s.post(f"{API}/auth/register",
-               json={"email": email, "password": password, "name": name})
+    body = {"email": email, "password": password, "name": name}
+    if referral_code:
+        body["referral_code"] = referral_code
+    r = s.post(f"{API}/auth/register", json=body)
     assert r.status_code == 200, r.text
     code = r.json()["dev_code"]
     r = s.post(f"{API}/auth/register/verify", json={"email": email, "code": code})
@@ -306,6 +317,56 @@ class TestMonthlySummary:
         assert r.status_code == 200, r.text
         prev = (date.today().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
         assert r.json()["period"] == prev
+
+
+# --------------------- referral program ---------------------
+class TestReferral:
+    def test_new_user_has_referral_code(self, s):
+        u = register_verified(s, f"test_ref_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", "TEST Ref")
+        r = s.get(f"{API}/referral/me", headers=auth(u["session_token"]))
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["referral_code"] and len(body["referral_code"]) == 6
+        assert body["completed_count"] == 0
+        assert body["referrals"] == []
+
+    def test_unknown_referral_code_does_not_block_registration(self, s):
+        u = register_verified(
+            s, f"test_ref_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", "TEST Ref",
+            referral_code="ZZZZZZ")
+        assert "session_token" in u
+
+    def test_referral_links_as_pending(self, s):
+        referrer = register_verified(s, f"test_ref_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", "TEST Referrer")
+        code = referrer["user"]["referral_code"]
+        referee_name = f"TEST Referee {uuid.uuid4().hex[:6]}"
+        register_verified(s, f"test_ref_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", referee_name,
+                          referral_code=code)
+
+        r = s.get(f"{API}/referral/me", headers=auth(referrer["session_token"]))
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["completed_count"] == 0
+        assert any(x["name"] == referee_name and x["status"] == "pending" for x in body["referrals"])
+
+    def test_referral_reward_granted_when_referee_upgrades(self, s):
+        referrer = register_verified(s, f"test_ref_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", "TEST Referrer")
+        code = referrer["user"]["referral_code"]
+        referee = register_verified(s, f"test_ref_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", "TEST Referee",
+                                    referral_code=code)
+        assert referrer["user"]["plan"] == "free"
+
+        r = s.post(f"{API}/test/simulate-mayar-webhook",
+                   json={"event": "membership.newMemberRegistered"},
+                   headers=auth(referee["session_token"]))
+        assert r.status_code == 200, r.text
+
+        me = s.get(f"{API}/auth/me", headers=auth(referrer["session_token"])).json()
+        assert me["user"]["plan"] == "premium"
+        assert me["user"]["premium_expires_at"]
+
+        r2 = s.get(f"{API}/referral/me", headers=auth(referrer["session_token"]))
+        assert r2.json()["completed_count"] == 1
 
 
 # --------------------- channels ---------------------

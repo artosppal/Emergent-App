@@ -37,7 +37,7 @@ type Mode =
 
 export default function Login() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ mode?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; ref?: string }>();
   const {
     login,
     registerStart,
@@ -61,6 +61,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [phone, setPhone] = useState("");
+  const [referralCode, setReferralCode] = useState((params.ref || "").toUpperCase());
   const [otp, setOtp] = useState("");
   const [pendingTarget, setPendingTarget] = useState("");
   const [loading, setLoading] = useState(false);
@@ -97,7 +98,7 @@ export default function Login() {
     setLoading(true);
     try {
       if (isRegister) {
-        await registerStart(email.trim(), password, name.trim());
+        await registerStart(email.trim(), password, name.trim(), referralCode.trim() || undefined);
         setPendingTarget(email.trim().toLowerCase());
         setOtp("");
         setCooldown(RESEND_COOLDOWN_S);
@@ -123,7 +124,8 @@ export default function Login() {
     }
     setLoading(true);
     try {
-      const normalized = await registerWhatsappStart(name.trim(), email.trim(), phone.trim());
+      const normalized = await registerWhatsappStart(
+        name.trim(), email.trim(), phone.trim(), referralCode.trim() || undefined);
       setPendingTarget(normalized);
       setOtp("");
       setCooldown(RESEND_COOLDOWN_S);
@@ -374,6 +376,18 @@ export default function Login() {
                   returnKeyType="go"
                   onSubmitEditing={mode === "wa-register" ? submitWaRegister : submitWaLogin}
                 />
+                {mode === "wa-register" && (
+                  <Input
+                    testID="wa-referral-code-input"
+                    label={t("auth.referralCodeLabel")}
+                    icon="ticket-percent-outline"
+                    placeholder={t("auth.referralCodePlaceholder")}
+                    value={referralCode}
+                    onChangeText={(v) => setReferralCode(v.toUpperCase())}
+                    autoCapitalize="characters"
+                    maxLength={6}
+                  />
+                )}
 
                 <Button
                   testID="wa-submit-button"
@@ -554,6 +568,18 @@ export default function Login() {
                     }
                     returnKeyType="go"
                     onSubmitEditing={submit}
+                  />
+                )}
+                {isRegister && (
+                  <Input
+                    testID="referral-code-input"
+                    label={t("auth.referralCodeLabel")}
+                    icon="ticket-percent-outline"
+                    placeholder={t("auth.referralCodePlaceholder")}
+                    value={referralCode}
+                    onChangeText={(v) => setReferralCode(v.toUpperCase())}
+                    autoCapitalize="characters"
+                    maxLength={6}
                   />
                 )}
 

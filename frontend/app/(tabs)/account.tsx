@@ -629,6 +629,15 @@ export default function Account() {
           </Text>
         </Pressable>
         <View style={styles.divider} />
+        <Pressable
+          testID="referral-program-button"
+          style={styles.actionRow}
+          onPress={() => router.push("/referral")}
+        >
+          <MaterialCommunityIcons name="gift-outline" size={20} color={colors.muted} />
+          <Text style={styles.actionText}>{t("account.referralAction")}</Text>
+        </Pressable>
+        <View style={styles.divider} />
         {isPremium && !user?.cancel_at_period_end && (
           <>
             <Pressable

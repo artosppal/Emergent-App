@@ -31,16 +31,17 @@ export interface User {
   wa_notif_limit?: number | null;
   onboarding_completed: boolean;
   has_password?: boolean;
+  referral_code?: string | null;
 }
 
 interface AuthState {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  registerStart: (email: string, password: string, name: string) => Promise<void>;
+  registerStart: (email: string, password: string, name: string, referralCode?: string) => Promise<void>;
   registerVerify: (email: string, code: string) => Promise<void>;
   registerResend: (email: string) => Promise<void>;
-  registerWhatsappStart: (name: string, email: string, phone: string) => Promise<string>;
+  registerWhatsappStart: (name: string, email: string, phone: string, referralCode?: string) => Promise<string>;
   registerWhatsappVerify: (phone: string, code: string) => Promise<void>;
   registerWhatsappResend: (phone: string) => Promise<void>;
   loginWhatsappRequest: (phone: string) => Promise<string>;
@@ -126,9 +127,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applyUser],
   );
 
-  const registerStart = useCallback(async (email: string, password: string, name: string) => {
-    await api.registerStart({ email, password, name });
-  }, []);
+  const registerStart = useCallback(
+    async (email: string, password: string, name: string, referralCode?: string) => {
+      await api.registerStart({ email, password, name, referral_code: referralCode || null });
+    },
+    [],
+  );
 
   const registerVerify = useCallback(
     async (email: string, code: string) => {
@@ -143,10 +147,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await api.registerResend(email);
   }, []);
 
-  const registerWhatsappStart = useCallback(async (name: string, email: string, phone: string) => {
-    const res: any = await api.registerWhatsappStart({ name, email, phone });
-    return res.phone as string;
-  }, []);
+  const registerWhatsappStart = useCallback(
+    async (name: string, email: string, phone: string, referralCode?: string) => {
+      const res: any = await api.registerWhatsappStart({ name, email, phone, referral_code: referralCode || null });
+      return res.phone as string;
+    },
+    [],
+  );
 
   const registerWhatsappVerify = useCallback(
     async (phone: string, code: string) => {

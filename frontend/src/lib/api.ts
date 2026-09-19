@@ -57,14 +57,14 @@ export async function apiFetch<T = any>(
 }
 
 export const api = {
-  registerStart: (body: { email: string; password: string; name: string }) =>
+  registerStart: (body: { email: string; password: string; name: string; referral_code?: string | null }) =>
     apiFetch("/auth/register", { method: "POST", body: JSON.stringify(body) }),
   registerVerify: (body: { email: string; code: string }) =>
     apiFetch("/auth/register/verify", { method: "POST", body: JSON.stringify(body) }),
   registerResend: (email: string) =>
     apiFetch("/auth/register/resend", { method: "POST", body: JSON.stringify({ email }) }),
 
-  registerWhatsappStart: (body: { name: string; email: string; phone: string }) =>
+  registerWhatsappStart: (body: { name: string; email: string; phone: string; referral_code?: string | null }) =>
     apiFetch("/auth/register/whatsapp", { method: "POST", body: JSON.stringify(body) }),
   registerWhatsappVerify: (body: { phone: string; code: string }) =>
     apiFetch("/auth/register/whatsapp/verify", { method: "POST", body: JSON.stringify(body) }),
@@ -112,6 +112,8 @@ export const api = {
     referral_source?: string | null;
     primary_goal?: string | null;
   }) => apiFetch("/onboarding", { method: "POST", body: JSON.stringify(body) }),
+
+  referralMe: () => apiFetch("/referral/me"),
 
   dashboard: () => apiFetch("/dashboard"),
   promos: () => apiFetch("/promos"),

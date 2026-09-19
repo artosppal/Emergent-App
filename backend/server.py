@@ -55,6 +55,7 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 FREE_PLAN_LIMIT = 3
 FREE_WA_NOTIF_LIMIT = 5  # WhatsApp reminders per calendar month on the Free plan; Premium is unlimited.
+REFERRAL_REWARD_DAYS = 30  # granted to the referrer once their referee becomes Premium
 APP_URL = "https://notifin.online"  # appended to outgoing reminder/invite WhatsApp messages for easy access
 
 # WhatsApp via Fonnte (simulation mode while token is empty)
@@ -203,6 +204,7 @@ def public_user(u: dict) -> dict:
         "wa_notif_limit": None if plan == "premium" else FREE_WA_NOTIF_LIMIT,
         "onboarding_completed": bool(u.get("onboarding_completed")),
         "has_password": bool(u.get("password_hash")),
+        "referral_code": u.get("referral_code"),
     }
 
 
@@ -335,6 +337,7 @@ class RegisterBody(BaseModel):
     email: EmailStr
     password: str
     name: str
+    referral_code: Optional[str] = None
 
 
 class LoginBody(BaseModel):
@@ -355,6 +358,7 @@ class RegisterWhatsappBody(BaseModel):
     name: str
     email: EmailStr
     phone: str
+    referral_code: Optional[str] = None
 
 
 class VerifyWhatsappRegisterBody(BaseModel):
@@ -492,7 +496,11 @@ async def register(body: RegisterBody):
     code = await create_otp(
         "register_email",
         body.email.lower(),
-        {"name": body.name, "email": body.email.lower(), "password_hash": hash_password(body.password)},
+        {
+            "name": body.name, "email": body.email.lower(),
+            "password_hash": hash_password(body.password),
+            "referral_code": body.referral_code,
+        },
     )
     await send_email(body.email.lower(), "Kode verifikasi Notifin", otp_email_body(code))
     return with_dev_code({"pending": True, "email": body.email.lower()}, code, email_live())
@@ -504,6 +512,7 @@ async def register_verify(body: VerifyEmailBody):
     existing = await db.users.find_one({"email": body.email.lower()})
     if existing:
         raise HTTPException(status_code=409, detail="Email sudah terdaftar")
+    referrer = await resolve_referrer(payload.get("referral_code"))
     user = {
         "user_id": new_user_id(),
         "email": payload["email"],
@@ -515,8 +524,11 @@ async def register_verify(body: VerifyEmailBody):
         "notify_channels": {"push": True, "whatsapp": False},
         "onboarding_completed": False,
         "created_at": now_utc().isoformat(),
+        "referral_code": await gen_unique_referral_code(),
+        "referred_by": referrer["user_id"] if referrer else None,
     }
     await db.users.insert_one(user)
+    await link_referral(referrer, user)
     token = make_session_token(user["user_id"])
     await persist_session(user["user_id"], token)
     return {"session_token": token, "user": public_user(user)}
@@ -546,7 +558,9 @@ async def register_whatsapp(body: RegisterWhatsappBody):
         raise HTTPException(status_code=422, detail="Nomor WhatsApp tidak valid. Pakai format 08xx atau +62xx")
     if await db.users.find_one({"phone": phone}):
         raise HTTPException(status_code=409, detail="Nomor WhatsApp sudah terdaftar")
-    code = await create_otp("register_whatsapp", phone, {"name": body.name, "email": email_norm, "phone": phone})
+    code = await create_otp("register_whatsapp", phone, {
+        "name": body.name, "email": email_norm, "phone": phone, "referral_code": body.referral_code,
+    })
     await send_whatsapp(phone, otp_wa_message(code))
     return with_dev_code({"pending": True, "phone": phone}, code, wa_live())
 
@@ -562,6 +576,7 @@ async def register_whatsapp_verify(body: VerifyWhatsappRegisterBody):
         raise HTTPException(status_code=409, detail="Email sudah terdaftar")
     if await db.users.find_one({"phone": phone}):
         raise HTTPException(status_code=409, detail="Nomor WhatsApp sudah terdaftar")
+    referrer = await resolve_referrer(payload.get("referral_code"))
     user = {
         "user_id": new_user_id(),
         "email": payload["email"],
@@ -574,8 +589,11 @@ async def register_whatsapp_verify(body: VerifyWhatsappRegisterBody):
         "notify_channels": {"push": True, "whatsapp": True},
         "onboarding_completed": False,
         "created_at": now_utc().isoformat(),
+        "referral_code": await gen_unique_referral_code(),
+        "referred_by": referrer["user_id"] if referrer else None,
     }
     await db.users.insert_one(user)
+    await link_referral(referrer, user)
     token = make_session_token(user["user_id"])
     await persist_session(user["user_id"], token)
     return {"session_token": token, "user": public_user(user)}
@@ -698,6 +716,8 @@ async def google_session(body: GoogleAuthBody):
             "notify_channels": {"push": True, "whatsapp": False},
             "onboarding_completed": False,
             "created_at": now_utc().isoformat(),
+            "referral_code": await gen_unique_referral_code(),
+            "referred_by": None,  # Google sign-in has no step to enter a referral code yet
         }
         await db.users.insert_one(user)
     token = make_session_token(user["user_id"])
@@ -954,6 +974,7 @@ async def process_mayar_event(event: str, data: dict) -> dict:
                 "premium_expires_at": expires_at,
             }},
         )
+        await complete_referral_if_any(matched_user["user_id"])
     elif matched_user and is_downgrade:
         action = "downgraded_to_free"
         await db.users.update_one(
@@ -1247,6 +1268,31 @@ async def update_limit(body: LimitBody, user: dict = Depends(get_current_user)):
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"monthly_limit": value}})
     updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return {"user": public_user(updated)}
+
+
+# ---------------------------------------------------------------------------
+# Referral program — invite a friend, get REFERRAL_REWARD_DAYS of Premium
+# once they become Premium themselves (see complete_referral_if_any).
+# ---------------------------------------------------------------------------
+@api_router.get("/referral/me")
+async def referral_me(user: dict = Depends(get_current_user)):
+    referrals = await db.referrals.find(
+        {"referrer_user_id": user["user_id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    return {
+        "referral_code": user.get("referral_code"),
+        "completed_count": sum(1 for r in referrals if r["status"] == "completed"),
+        "reward_days": REFERRAL_REWARD_DAYS,
+        "referrals": [
+            {
+                "name": r.get("referee_name"),
+                "status": r["status"],
+                "created_at": r["created_at"],
+                "completed_at": r.get("completed_at"),
+            }
+            for r in referrals
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1601,6 +1647,71 @@ CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 def gen_invite_code() -> str:
     return "".join(secrets.choice(CODE_ALPHABET) for _ in range(6))
+
+
+async def gen_unique_referral_code() -> str:
+    while True:
+        code = gen_invite_code()
+        if not await db.users.find_one({"referral_code": code}):
+            return code
+
+
+async def resolve_referrer(code: Optional[str]) -> Optional[dict]:
+    if not code or not code.strip():
+        return None
+    return await db.users.find_one({"referral_code": code.strip().upper()}, {"_id": 0})
+
+
+async def link_referral(referrer: Optional[dict], referee: dict):
+    """Logs the relationship as 'pending' — the referrer's reward is only
+    granted once the referee actually becomes Premium (see
+    complete_referral_if_any, called from the Mayar upgrade path), not at
+    signup, so this can't be farmed with fake accounts alone."""
+    if not referrer:
+        return
+    await db.referrals.insert_one({
+        "id": str(uuid.uuid4()),
+        "referrer_user_id": referrer["user_id"],
+        "referee_user_id": referee["user_id"],
+        "referee_name": referee.get("name"),
+        "status": "pending",
+        "created_at": now_utc().isoformat(),
+    })
+
+
+async def complete_referral_if_any(referee_user_id: str):
+    """Grants the referrer REFERRAL_REWARD_DAYS of Premium the first time
+    their referee becomes Premium. Idempotent — referrals.status only ever
+    transitions out of 'pending' once, so a webhook retry or a later
+    downgrade+re-upgrade of the same referee can't grant the reward twice."""
+    ref = await db.referrals.find_one({"referee_user_id": referee_user_id, "status": "pending"}, {"_id": 0})
+    if not ref:
+        return
+    referrer = await db.users.find_one({"user_id": ref["referrer_user_id"]}, {"_id": 0})
+    if not referrer or referrer.get("deleted_at"):
+        await db.referrals.update_one({"id": ref["id"]}, {"$set": {"status": "referrer_unavailable"}})
+        return
+    now = now_utc()
+    base = now
+    current_expiry = referrer.get("premium_expires_at")
+    if current_expiry:
+        try:
+            parsed = datetime.fromisoformat(current_expiry)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            if parsed > now:
+                base = parsed  # extend remaining time rather than clobber it
+        except Exception:
+            pass
+    update = {
+        "plan": "premium",
+        "premium_expires_at": (base + timedelta(days=REFERRAL_REWARD_DAYS)).isoformat(),
+    }
+    if not referrer.get("premium_since"):
+        update["premium_since"] = now.isoformat()
+    await db.users.update_one({"user_id": referrer["user_id"]}, {"$set": update})
+    await db.referrals.update_one(
+        {"id": ref["id"]}, {"$set": {"status": "completed", "completed_at": now.isoformat()}})
 
 
 def add_cycle(d: date, cycle: str) -> date:
@@ -4529,6 +4640,10 @@ async def startup():
         await db.mayar_webhook_log.create_index("received_at")
         await db.promo_reminders.create_index([("sent", 1), ("remind_at", 1)])
         await db.promo_reminders.create_index("user_id")
+        await db.users.create_index("referral_code", unique=True, sparse=True)
+        await db.referrals.create_index("id", unique=True)
+        await db.referrals.create_index("referrer_user_id")
+        await db.referrals.create_index("referee_user_id", unique=True)
     except Exception as e:
         logger.warning(f"index creation: {e}")
 
@@ -4547,6 +4662,21 @@ async def startup():
             logger.info(f"Backfilled onboarding_completed=true for {res.modified_count} existing user(s)")
     except Exception as e:
         logger.warning(f"onboarding_completed backfill: {e}")
+
+    # Same idea for referral_code: accounts created before the referral
+    # program existed have none. Generated one at a time (not update_many)
+    # since each needs its own unique random value.
+    try:
+        missing = await db.users.find(
+            {"referral_code": {"$exists": False}}, {"_id": 0, "user_id": 1}
+        ).to_list(10000)
+        for u in missing:
+            await db.users.update_one(
+                {"user_id": u["user_id"]}, {"$set": {"referral_code": await gen_unique_referral_code()}})
+        if missing:
+            logger.info(f"Backfilled referral_code for {len(missing)} existing user(s)")
+    except Exception as e:
+        logger.warning(f"referral_code backfill: {e}")
 
     asyncio.create_task(scheduler_loop())
 
