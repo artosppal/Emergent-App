@@ -10,6 +10,7 @@ import {
   Linking,
   Modal,
   Platform,
+  Share,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -17,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/context/AuthContext";
@@ -125,6 +127,38 @@ export default function Dashboard() {
   const remindCustomWeb = () => {
     if (!remindPromoId || !remindCustomValue) return;
     scheduleRemind(remindPromoId, new Date(remindCustomValue));
+  };
+
+  const shareSpending = async () => {
+    const message = t("dashboard.shareMessage", {
+      total: formatRupiah(data?.total_this_month || 0),
+      count: data?.active_count || 0,
+    });
+    if (Platform.OS === "web") {
+      // react-native-web's Share.share() throws when navigator.share isn't
+      // available (most desktop browsers) instead of falling back — copy
+      // to clipboard instead of failing with no feedback at all.
+      const nav: any = typeof navigator !== "undefined" ? navigator : null;
+      if (nav?.share) {
+        try {
+          await nav.share({ text: message });
+          return;
+        } catch {
+          return;
+        }
+      }
+      try {
+        await nav?.clipboard?.writeText(message);
+        toast.show(t("dashboard.shareCopied"), "success");
+      } catch {
+        toast.show(t("dashboard.shareFailed"), "error");
+      }
+      return;
+    }
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await Share.share({ message });
+    } catch {}
   };
 
   const togglePromo = async () => {
@@ -240,7 +274,19 @@ export default function Dashboard() {
         >
           <View style={styles.totalTopRow}>
             <Text style={styles.totalLabel}>{t("dashboard.totalLabel")}</Text>
-            <MaterialCommunityIcons name="wallet" size={20} color="rgba(255,255,255,0.85)" />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+              <Pressable
+                testID="share-spending-button"
+                hitSlop={8}
+                onPress={(e: any) => {
+                  e.stopPropagation?.();
+                  shareSpending();
+                }}
+              >
+                <MaterialCommunityIcons name="share-variant" size={19} color="rgba(255,255,255,0.85)" />
+              </Pressable>
+              <MaterialCommunityIcons name="wallet" size={20} color="rgba(255,255,255,0.85)" />
+            </View>
           </View>
           <Text style={styles.totalValue}>{formatRupiah(data?.total_this_month || 0)}</Text>
           <View style={styles.projRow}>

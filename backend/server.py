@@ -2104,6 +2104,87 @@ async def expire_premiums_sweep():
     logger.info(f"Expired {len(ids)} premium account(s) back to Free")
 
 
+# ---------------------------------------------------------------------------
+# Monthly spending summary (Premium only — advertised on the landing/pricing
+# pages as "Ringkasan bulanan otomatis")
+# ---------------------------------------------------------------------------
+ID_MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli",
+             "Agustus", "September", "Oktober", "November", "Desember"]
+CATEGORY_LABELS = {
+    "entertainment": "Hiburan", "music": "Musik", "productivity": "Produktivitas",
+    "education": "Edukasi", "gaming": "Game", "cloud": "Cloud & Storage",
+    "shopping": "Belanja", "health": "Kesehatan", "news": "Berita",
+    "utilities": "Utilitas", "other": "Lainnya",
+}
+
+
+def period_label(period: str) -> str:
+    year, month = period.split("-")
+    return f"{ID_MONTHS[int(month) - 1]} {year}"
+
+
+def prev_period_of(d: date) -> str:
+    return (d.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+
+
+def monthly_summary_email_body(name: Optional[str], period: str, total: float,
+                                top_category: Optional[str], sub_count: int) -> str:
+    lines = [
+        f"Halo {name or 'kamu'},",
+        "",
+        f"Ini ringkasan langgananmu buat {period_label(period)}:",
+        "",
+        f"Total pengeluaran: {fmt_rp(total)}",
+        f"Jumlah langganan aktif: {sub_count}",
+    ]
+    if top_category:
+        lines.append(f"Kategori terbesar: {CATEGORY_LABELS.get(top_category, top_category)}")
+    lines += ["", f"Cek rincian lengkapnya di {APP_URL}", "", "_Notifin_"]
+    return "\n".join(lines)
+
+
+async def build_and_send_monthly_summary(user: dict, period: str) -> bool:
+    """Returns False (no email sent) if there's no recorded spending for that
+    period yet — e.g. a brand-new account that hasn't opened the dashboard
+    since signing up, since spending_snapshots is only written when the
+    dashboard is viewed (see the /dashboard handler)."""
+    snapshot = await db.spending_snapshots.find_one(
+        {"user_id": user["user_id"], "period": period}, {"_id": 0})
+    if not snapshot:
+        return False
+    subs = await db.subscriptions.find(
+        {"user_id": user["user_id"], "deleted_at": None}, {"_id": 0}).to_list(500)
+    by_cat: dict = {}
+    for d in subs:
+        cat = d.get("category", "other")
+        by_cat[cat] = by_cat.get(cat, 0) + monthly_cost(d)
+    top_category = max(by_cat, key=by_cat.get) if by_cat else None
+    body = monthly_summary_email_body(
+        user.get("name"), period, snapshot.get("total", 0), top_category, len(subs))
+    await send_email(user["email"], f"Ringkasan langgananmu — {period_label(period)}", body)
+    return True
+
+
+async def monthly_summary_sweep():
+    """Runs every scheduler tick but only actually emails each Premium user
+    once per calendar month (users.last_summary_month), covering last
+    month's spending — idempotent the same way reminder_sweep is, just
+    keyed by month instead of by notification."""
+    current_month = date.today().strftime("%Y-%m")
+    prev_period = prev_period_of(date.today())
+    users = await db.users.find(
+        {"plan": "premium", "deleted_at": None, "last_summary_month": {"$ne": current_month}},
+        {"_id": 0},
+    ).to_list(2000)
+    for u in users:
+        try:
+            await build_and_send_monthly_summary(u, prev_period)
+        except Exception as e:
+            logger.info(f"monthly summary skipped for {u['user_id']}: {e}")
+        await db.users.update_one(
+            {"user_id": u["user_id"]}, {"$set": {"last_summary_month": current_month}})
+
+
 async def scheduler_loop():
     await asyncio.sleep(10)
     while True:
@@ -2119,6 +2200,10 @@ async def scheduler_loop():
             await promo_reminder_sweep()
         except Exception as e:
             logger.warning(f"promo reminder sweep failed: {e}")
+        try:
+            await monthly_summary_sweep()
+        except Exception as e:
+            logger.warning(f"monthly summary sweep failed: {e}")
         await asyncio.sleep(1800)
 
 
@@ -2214,6 +2299,21 @@ async def test_send_reminder(body: TestReminderBody, user: dict = Depends(get_cu
         "phone": user["phone"],
         "message": msg,
     }
+
+
+class TestMonthlySummaryBody(BaseModel):
+    period: Optional[str] = None  # "YYYY-MM"; defaults to last calendar month
+
+
+@api_router.post("/test/simulate-monthly-summary")
+async def test_simulate_monthly_summary(body: TestMonthlySummaryBody, user: dict = Depends(get_current_user)):
+    """TESTING ONLY — always targets the caller's own account and bypasses
+    the once-a-month gate (monthly_summary_sweep's users.last_summary_month
+    check), so this can verify the email content without waiting for a real
+    month boundary."""
+    period = body.period or prev_period_of(date.today())
+    sent = await build_and_send_monthly_summary(user, period)
+    return {"sent": sent, "period": period}
 
 
 def cycle_back(d: date, cycle: str) -> date:

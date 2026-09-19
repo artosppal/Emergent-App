@@ -1,6 +1,7 @@
 """Notifin backend API tests (FASE 1 MVP)."""
 import os
 import uuid
+from datetime import date, timedelta
 import pytest
 import requests
 
@@ -273,6 +274,38 @@ class TestDashboard:
         assert d["active_count"] >= 3
         assert isinstance(d["upcoming"], list)
         assert isinstance(d["by_category"], list)
+
+
+# --------------------- monthly summary (Premium) ---------------------
+class TestMonthlySummary:
+    def test_no_snapshot_yet_returns_not_sent(self, s):
+        u = register_verified(s, f"test_sum_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", "TEST Sum")
+        r = s.post(f"{API}/test/simulate-monthly-summary", json={"period": "2020-01"},
+                   headers=auth(u["session_token"]))
+        assert r.status_code == 200, r.text
+        assert r.json()["sent"] is False
+
+    def test_sends_for_period_with_a_snapshot(self, s):
+        u = register_verified(s, f"test_sum_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", "TEST Sum")
+        tok = u["session_token"]
+        # /dashboard writes a spending_snapshots row for the CURRENT period
+        # as a side effect (see server.py:dashboard) — use that instead of
+        # needing direct DB access from the test.
+        r = s.get(f"{API}/dashboard", headers=auth(tok))
+        assert r.status_code == 200, r.text
+        current_period = date.today().strftime("%Y-%m")
+
+        r2 = s.post(f"{API}/test/simulate-monthly-summary", json={"period": current_period},
+                    headers=auth(tok))
+        assert r2.status_code == 200, r2.text
+        assert r2.json() == {"sent": True, "period": current_period}
+
+    def test_default_period_is_previous_month(self, s):
+        u = register_verified(s, f"test_sum_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", "TEST Sum")
+        r = s.post(f"{API}/test/simulate-monthly-summary", json={}, headers=auth(u["session_token"]))
+        assert r.status_code == 200, r.text
+        prev = (date.today().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+        assert r.json()["period"] == prev
 
 
 # --------------------- channels ---------------------
