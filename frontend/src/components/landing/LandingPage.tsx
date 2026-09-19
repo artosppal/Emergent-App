@@ -305,13 +305,13 @@ function Pricing({ isTablet, onSignup, t }: any) {
               ))}
             </View>
 
-            <Button
-              title={t("landing.pricingPremiumCta")}
+            <Pressable
               onPress={onSignup}
-              variant="secondary"
-              style={{ backgroundColor: "#FFFFFF" }}
               testID="landing-pricing-premium-signup"
-            />
+              style={({ pressed }) => [styles.goldButton, pressed && { opacity: 0.9 }]}
+            >
+              <Text style={styles.goldButtonText}>{t("landing.pricingPremiumCta")}</Text>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -571,7 +571,7 @@ const styles = StyleSheet.create({
   stepNumberText: { fontFamily: font.extrabold, fontSize: fontSize.lg, color: colors.onBrandPrimary },
 
   pricingRow: { flexDirection: "column", gap: spacing.lg },
-  pricingRowWide: { flexDirection: "row", alignItems: "stretch" },
+  pricingRowWide: { flexDirection: "row", alignItems: "stretch", gap: spacing.xl },
   pricingCard: {
     flex: 1,
     backgroundColor: colors.surfaceSecondary,
@@ -586,10 +586,8 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   pricingCardHighlightWide: {
-    marginTop: -spacing.lg,
-    marginBottom: -spacing.lg,
-    paddingTop: spacing.xl + spacing.lg,
-    paddingBottom: spacing.xl + spacing.lg,
+    transform: [{ scale: 1.04 }],
+    zIndex: 1,
   },
   pricingBadge: {
     flexDirection: "row",
@@ -634,6 +632,20 @@ const styles = StyleSheet.create({
   pricingItemsFill: { flex: 1, marginBottom: spacing.lg },
   pricingItemRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
   pricingItemText: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface },
+  goldButton: {
+    height: 54,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
+    backgroundColor: "#FBBF24",
+    shadowColor: "#78350F",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  goldButtonText: { fontFamily: font.bold, fontSize: fontSize.lg, color: "#78350F" },
 
   ctaBanner: {
     backgroundColor: colors.brand,
