@@ -49,8 +49,15 @@ Tagline: "Biar gak ada lagi langganan yang kelewat atau lupa di-cancel."
 - Riwayat: GET /groups/{gid}/history — up to 12 past periods (>= created_at) per sub, paid/unpaid splits. UI /group/history screen.
 - Tests: /app/backend/tests/test_notifin_fase3.py (15) + groups suite; run `pytest -n 0`.
 
+### Continuing via Claude Code (2026-09) — no longer Emergent's builder
+- Payment gateway ✅ — Mayar.id (Membership API v2), not Midtrans/Xendit as the FASE 4 line below still says; ignore that mention. `/auth/upgrade` starts a real checkout, `/webhooks/mayar` is the only place `plan` actually flips.
+- Onboarding survey ✅ — 4-question survey + tour, `POST /api/onboarding`.
+- Pricing page ✅ (2026-09) — standalone `/pricing` (`frontend/app/pricing.tsx`), reachable logged-in or out. Logged-out: full marketing chrome + an 8-row feature comparison table + FAQ. Logged-in: lightweight header, plan cards reflect the visitor's actual plan (inert pill on their current plan, Premium CTA opens the real upgrade sheet instead of registration). Linked from Account ("Bandingkan semua fitur paket"). `Nav`/`Footer`/`SectionHeading` were pulled out of `LandingPage.tsx` into `src/components/landing/shared.tsx` so this page could reuse them.
+
 ## Backlog (next phases)
-- P1 FASE 4: Payment gateway (Midtrans/Xendit — QRIS/e-wallet/bank), pricing page, onboarding, weekly/monthly summary, social share of monthly total, referral program.
+- Ringkasan pengeluaran mingguan/bulanan via email (already advertised in landing/pricing copy as a Premium feature — not yet implemented, build to match).
+- Social share of monthly total.
+- Referral program.
 - Optional cleanup: @app.on_event → lifespan; shadow* → boxShadow.
 
 ## Pending user inputs / build notes
@@ -58,4 +65,4 @@ Tagline: "Biar gak ada lagi langganan yang kelewat atau lupa di-cancel."
 - FONNTE_TOKEN (backend/.env) empty → WA simulation mode. User will provide token later.
 
 ## Next Tasks
-- Await user confirmation of Fase 3, then Fase 4 (payment gateway Midtrans/Xendit, onboarding, summaries, referral) per user approval.
+- Next backlog item per user priority: weekly/monthly spending summary email, then social share, then referral program.
