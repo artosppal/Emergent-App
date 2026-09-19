@@ -2323,6 +2323,67 @@ async def admin_list_users(query: str = "", trash: bool = False, _: None = Depen
     return {"users": await enrich_users(docs)}
 
 
+@api_router.get("/admin/stats")
+async def admin_stats(_: None = Depends(require_admin)):
+    """Summary numbers for the admin dashboard cards/charts — total accounts,
+    Free/Premium split, this-month signups (vs last month), average
+    subscriptions per account, and a 6-month signup trend for the bar chart.
+    """
+    now = now_utc()
+    first_of_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Walk back 6 calendar months from the 1st of this month — stepping via
+    # "day before the 1st" rather than subtracting a fixed number of days,
+    # so this is correct regardless of how many days are in each month.
+    month_starts = []
+    cursor = first_of_this_month
+    for _ in range(6):
+        month_starts.append(cursor)
+        cursor = (cursor - timedelta(days=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_starts.reverse()  # oldest -> newest
+
+    def month_key(dt: datetime) -> str:
+        return dt.strftime("%Y-%m")
+
+    docs = await db.users.find(
+        {"deleted_at": None, "created_at": {"$gte": month_starts[0].isoformat()}},
+        {"created_at": 1, "_id": 0},
+    ).to_list(10000)
+
+    counts = {month_key(m): 0 for m in month_starts}
+    for d in docs:
+        raw = d.get("created_at")
+        if not raw:
+            continue
+        try:
+            dt = datetime.fromisoformat(raw)
+        except ValueError:
+            continue
+        key = month_key(dt)
+        if key in counts:
+            counts[key] += 1
+
+    monthly_signups = [
+        {"month": m.strftime("%b"), "count": counts[month_key(m)]} for m in month_starts
+    ]
+    new_this_month = counts[month_key(month_starts[-1])]
+    new_last_month = counts[month_key(month_starts[-2])] if len(month_starts) >= 2 else 0
+
+    total_users = await db.users.count_documents({"deleted_at": None})
+    premium_users = await db.users.count_documents({"deleted_at": None, "plan": "premium"})
+    total_subs = await db.subscriptions.count_documents({"deleted_at": None})
+
+    return {
+        "total_users": total_users,
+        "premium_users": premium_users,
+        "free_users": total_users - premium_users,
+        "new_this_month": new_this_month,
+        "new_last_month": new_last_month,
+        "avg_subs_per_user": round(total_subs / total_users, 1) if total_users else 0,
+        "monthly_signups": monthly_signups,
+    }
+
+
 MAX_MANUAL_PREMIUM_DAYS = 3650  # 10 years — sanity cap on admin-granted durations
 
 
@@ -2920,6 +2981,60 @@ ADMIN_PAGE_HTML = """<!doctype html>
     .main-content .card.wide { max-width: 100%; }
   }
 
+  /* Dashboard: greeting, stat cards, chart widgets — on top of the
+     accounts card, "Kelola Akun" tab only. */
+  .dash-header { margin-bottom: 16px; }
+  .dash-header h2 { font-size: 19px; margin: 0 0 4px; }
+  .dash-sub { color: #6B7280; font-size: 13px; margin: 0; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 14px; }
+  .stat-card {
+    background: #FFFFFF; border-radius: 16px; padding: 16px;
+    box-shadow: 0 10px 24px -18px rgba(11,61,46,0.28);
+  }
+  .stat-icon {
+    width: 34px; height: 34px; border-radius: 10px; display: flex;
+    align-items: center; justify-content: center; font-size: 15px; margin-bottom: 10px;
+  }
+  .stat-icon-a { background: #ECFDF5; }
+  .stat-icon-b { background: #FEF3C7; }
+  .stat-icon-c { background: #EFF6FF; }
+  .stat-icon-d { background: #F3E8FF; }
+  .stat-label { font-size: 12px; color: #6B7280; font-weight: 700; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 800; color: #182924; }
+  .stat-delta {
+    display: inline-flex; align-items: center; font-size: 11px; font-weight: 700;
+    margin-top: 8px; padding: 3px 8px; border-radius: 999px;
+  }
+  .stat-delta.up { background: #ECFDF5; color: #059669; }
+  .stat-delta.down { background: #FEF2F2; color: #DC2626; }
+  .stat-delta.flat { background: #F3F4F6; color: #6B7280; }
+
+  .widget-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 16px; }
+  .widget { background: #FFFFFF; border-radius: 16px; padding: 18px; box-shadow: 0 10px 24px -18px rgba(11,61,46,0.28); }
+  .widget h3 { font-size: 13px; margin: 0 0 16px; color: #182924; }
+
+  .bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 130px; }
+  .bar-chart .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; }
+  .bar-chart .bar-count { font-size: 10px; font-weight: 700; color: #182924; }
+  .bar-chart .bar { width: 100%; max-width: 22px; background: #D1FAE5; border-radius: 6px 6px 2px 2px; transition: height 0.2s ease; }
+  .bar-chart .bar.is-peak { background: #059669; }
+  .bar-chart .bar-label { font-size: 10px; color: #6B7280; font-weight: 600; }
+
+  .donut-wrap { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .donut { width: 110px; height: 110px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .donut-center { width: 70px; height: 70px; border-radius: 50%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .donut-center strong { font-size: 17px; color: #182924; }
+  .donut-center span { font-size: 9px; color: #6B7280; font-weight: 700; text-transform: uppercase; }
+  .donut-legend { display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #182924; }
+  .donut-legend-item { display: flex; align-items: center; gap: 8px; }
+  .donut-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+  @media (min-width: 640px) {
+    .stat-grid { grid-template-columns: repeat(4, 1fr); }
+    .widget-grid { grid-template-columns: 1.3fr 1fr; }
+  }
+
   /* Promo cards */
   .promo-row {
     background: #FFFFFF; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px;
@@ -2973,7 +3088,64 @@ ADMIN_PAGE_HTML = """<!doctype html>
   </div>
 
   <div class="main-content">
-  <div class="card wide panel-section active" id="panel-accounts">
+  <div class="panel-section active" id="panel-accounts">
+    <div class="dash-header">
+      <div>
+        <h2>Selamat datang, Admin</h2>
+        <p class="dash-sub" id="dash-date"></p>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-icon stat-icon-a">&#128101;</div>
+        <div class="stat-label">Total Akun</div>
+        <div class="stat-value" id="stat-total">-</div>
+        <span class="stat-delta flat" id="stat-total-delta">-</span>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon stat-icon-b">&#128081;</div>
+        <div class="stat-label">Akun Premium</div>
+        <div class="stat-value" id="stat-premium">-</div>
+        <span class="stat-delta flat" id="stat-premium-delta">-</span>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon stat-icon-c">&#10024;</div>
+        <div class="stat-label">Baru Bulan Ini</div>
+        <div class="stat-value" id="stat-new">-</div>
+        <span class="stat-delta flat" id="stat-new-delta">-</span>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon stat-icon-d">&#128276;</div>
+        <div class="stat-label">Rata-rata Langganan</div>
+        <div class="stat-value" id="stat-avgsubs">-</div>
+        <span class="stat-delta flat" id="stat-avgsubs-delta">per akun</span>
+      </div>
+    </div>
+
+    <div class="widget-grid">
+      <div class="widget">
+        <h3>Pendaftar per Bulan</h3>
+        <div class="bar-chart" id="signup-chart"></div>
+      </div>
+      <div class="widget">
+        <h3>Free vs Premium</h3>
+        <div class="donut-wrap">
+          <div class="donut" id="plan-donut">
+            <div class="donut-center">
+              <strong id="donut-pct">0%</strong>
+              <span>Premium</span>
+            </div>
+          </div>
+          <div class="donut-legend">
+            <div class="donut-legend-item"><span class="donut-dot" style="background:#059669"></span>Premium: <strong id="donut-premium-count">0</strong></div>
+            <div class="donut-legend-item"><span class="donut-dot" style="background:#E8F0EC"></span>Free: <strong id="donut-free-count">0</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card wide" id="accounts-card">
     <p class="sub">Cari akun berdasarkan email atau nama, ubah status Premium, atau kelola akun.</p>
 
     <div class="add-toolbar">
@@ -3043,6 +3215,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
         </thead>
         <tbody id="list"></tbody>
       </table>
+    </div>
     </div>
   </div>
 
@@ -3122,6 +3295,7 @@ ADMIN_PAGE_HTML = """<!doctype html>
       document.getElementById('login-card').style.display = 'none';
       document.getElementById('shell').classList.add('is-open');
       loadUsers('');
+      loadStats();
       loadPromos();
       loadWhatsNew();
     } catch (e) {
@@ -3171,6 +3345,90 @@ ADMIN_PAGE_HTML = """<!doctype html>
     } catch (e) {
       errEl.textContent = 'Tidak bisa menghubungi server.';
     }
+  }
+
+  async function loadStats() {
+    try {
+      const res = await fetch('/api/admin/stats', { headers: { Authorization: 'Bearer ' + token } });
+      if (!res.ok) {
+        if (res.status === 401) { logout(); return; }
+        return;
+      }
+      renderStats(await res.json());
+    } catch (e) {
+      // Non-blocking — the accounts table below still works without the dashboard cards.
+    }
+  }
+
+  function deltaBadge(current, previous) {
+    if (previous === 0 && current === 0) return { text: '0%', cls: 'flat' };
+    if (previous === 0) return { text: 'Baru', cls: 'up' };
+    const pct = Math.round(((current - previous) / previous) * 100);
+    if (pct > 0) return { text: '+' + pct + '%', cls: 'up' };
+    if (pct < 0) return { text: pct + '%', cls: 'down' };
+    return { text: '0%', cls: 'flat' };
+  }
+
+  function setDelta(id, delta, suffix) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'stat-delta ' + delta.cls;
+    el.textContent = delta.text + (suffix ? ' ' + suffix : '');
+  }
+
+  function renderStats(s) {
+    document.getElementById('stat-total').textContent = s.total_users;
+    document.getElementById('stat-premium').textContent = s.premium_users;
+    document.getElementById('stat-new').textContent = s.new_this_month;
+    document.getElementById('stat-avgsubs').textContent = s.avg_subs_per_user;
+
+    const totalLastMonth = s.total_users - s.new_this_month;
+    setDelta('stat-total-delta', deltaBadge(s.total_users, totalLastMonth), 'dari bulan lalu');
+    const premPct = s.total_users ? Math.round((s.premium_users / s.total_users) * 100) : 0;
+    setDelta('stat-premium-delta', { text: premPct + '%', cls: premPct > 0 ? 'up' : 'flat' }, 'dari total akun');
+    setDelta('stat-new-delta', deltaBadge(s.new_this_month, s.new_last_month), 'vs bulan lalu');
+    setDelta('stat-avgsubs-delta', { text: 'per akun', cls: 'flat' }, '');
+
+    renderBarChart(s.monthly_signups || []);
+    renderDonut(s.premium_users, s.free_users);
+  }
+
+  function renderBarChart(monthly) {
+    const el = document.getElementById('signup-chart');
+    if (!el) return;
+    const max = Math.max(1, ...monthly.map((m) => m.count));
+    el.innerHTML = monthly.map((m) => {
+      const h = m.count > 0 ? Math.max(6, Math.round((m.count / max) * 100)) : 2;
+      const peak = m.count === max && max > 0 ? ' is-peak' : '';
+      return (
+        '<div class="bar-col">' +
+          '<div class="bar-count">' + m.count + '</div>' +
+          '<div class="bar' + peak + '" style="height:' + h + 'px"></div>' +
+          '<div class="bar-label">' + escapeHtml(m.month) + '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  function renderDonut(premium, free) {
+    const total = premium + free;
+    const pct = total ? Math.round((premium / total) * 100) : 0;
+    const deg = total ? (premium / total) * 360 : 0;
+    const donut = document.getElementById('plan-donut');
+    if (donut) donut.style.background = 'conic-gradient(#059669 ' + deg + 'deg, #E8F0EC 0deg)';
+    const pctEl = document.getElementById('donut-pct');
+    if (pctEl) pctEl.textContent = pct + '%';
+    const premEl = document.getElementById('donut-premium-count');
+    if (premEl) premEl.textContent = premium;
+    const freeEl = document.getElementById('donut-free-count');
+    if (freeEl) freeEl.textContent = free;
+  }
+
+  const dashDateEl = document.getElementById('dash-date');
+  if (dashDateEl) {
+    dashDateEl.textContent = new Date().toLocaleDateString('id-ID', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
   }
 
   function switchTab(trash) {
