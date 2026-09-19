@@ -2,7 +2,7 @@
 // that reuse its chrome (e.g. the pricing page) — nav bar, section heading,
 // and footer, plus the layout styles they depend on.
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors, font, fontSize, radius, spacing } from "@/src/theme";
 
@@ -75,6 +75,15 @@ export function Footer({ isTablet, router, t }: any) {
         </View>
 
         <View style={sharedStyles.footerLinks}>
+          <Pressable onPress={() => router.push("/pricing")}>
+            <Text style={sharedStyles.footerLink}>{t("landing.navPricing")}</Text>
+          </Pressable>
+          <Pressable onPress={() => router.push("/faq")}>
+            <Text style={sharedStyles.footerLink}>{t("landing.footerFaq")}</Text>
+          </Pressable>
+          <Pressable onPress={() => router.push("/blog")}>
+            <Text style={sharedStyles.footerLink}>{t("landing.footerBlog")}</Text>
+          </Pressable>
           <Pressable onPress={() => router.push("/privacy")}>
             <Text style={sharedStyles.footerLink}>{t("landing.footerPrivacy")}</Text>
           </Pressable>
@@ -83,6 +92,9 @@ export function Footer({ isTablet, router, t }: any) {
           </Pressable>
         </View>
       </View>
+      <Pressable onPress={() => Linking.openURL("mailto:support@notifin.online")}>
+        <Text style={sharedStyles.footerSupport}>{t("landing.footerSupport")} support@notifin.online</Text>
+      </Pressable>
       <Text style={sharedStyles.footerCopyright}>
         © {new Date().getFullYear()} Notifin. {t("landing.footerRights")}
       </Text>
@@ -175,6 +187,13 @@ export const sharedStyles = StyleSheet.create({
   footerTagline: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: spacing.md, lineHeight: 19 },
   footerLinks: { flexDirection: "row", gap: spacing.xl },
   footerLink: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurfaceSecondary },
+  footerSupport: {
+    fontFamily: font.medium,
+    fontSize: fontSize.sm,
+    color: colors.brand,
+    marginTop: spacing.xl,
+    textAlign: "center",
+  },
   footerCopyright: {
     fontFamily: font.regular,
     fontSize: fontSize.sm,

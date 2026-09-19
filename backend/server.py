@@ -162,6 +162,12 @@ def make_session_token(user_id: str) -> str:
         "user_id": user_id,
         "exp": now_utc() + timedelta(days=SESSION_DAYS),
         "iat": now_utc(),
+        # exp/iat are second-precision, so two calls for the same user_id
+        # within the same second would otherwise encode to the exact same
+        # JWT string — jti (a random nonce) keeps session_token unique in
+        # db.user_sessions regardless of timing (hit by reset-password
+        # immediately followed by a fresh login, e.g.).
+        "jti": uuid.uuid4().hex,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
@@ -196,6 +202,7 @@ def public_user(u: dict) -> dict:
         "wa_notif_used": wa_used,
         "wa_notif_limit": None if plan == "premium" else FREE_WA_NOTIF_LIMIT,
         "onboarding_completed": bool(u.get("onboarding_completed")),
+        "has_password": bool(u.get("password_hash")),
     }
 
 
@@ -1103,6 +1110,73 @@ async def update_channels(body: ChannelsBody, user: dict = Depends(get_current_u
                               {"$set": {"notify_channels": body.model_dump()}})
     updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return {"user": public_user(updated)}
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: Optional[str] = None
+    new_password: str
+
+
+@api_router.put("/auth/password")
+async def change_password(body: ChangePasswordBody, user: dict = Depends(get_current_user)):
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=422, detail="Password baru minimal 6 karakter")
+    if user.get("password_hash"):
+        # Normal case: prove ownership of the current password before
+        # replacing it.
+        if not body.current_password or not verify_password(body.current_password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Password saat ini salah")
+    # else: account was created via Google or WhatsApp-only signup and has
+    # no password yet — let them set one (adds email/password as a login
+    # option) without a "current" password to check against.
+    await db.users.update_one(
+        {"user_id": user["user_id"]}, {"$set": {"password_hash": hash_password(body.new_password)}})
+    return {"status": "ok"}
+
+
+class ForgotPasswordBody(BaseModel):
+    email: EmailStr
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordBody):
+    """Always responds the same way regardless of whether the email is
+    registered, so this can't be used to enumerate accounts — the OTP is
+    only actually created and sent when a matching, non-deleted user with a
+    password exists."""
+    email = body.email.lower()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if user and not user.get("deleted_at") and user.get("password_hash"):
+        code = await create_otp("reset_password", email)
+        await send_email(email, "Reset password Notifin", otp_email_body(code))
+        return with_dev_code({"pending": True, "email": email}, code, email_live())
+    return {"pending": True, "email": email}
+
+
+class ResetPasswordBody(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordBody):
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=422, detail="Password baru minimal 6 karakter")
+    email = body.email.lower()
+    await check_otp("reset_password", email, body.code.strip())
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
+    check_not_deleted(user)
+    await db.users.update_one(
+        {"user_id": user["user_id"]}, {"$set": {"password_hash": hash_password(body.new_password)}})
+    # A forgotten password is a plausible compromise signal — sign out
+    # every other session rather than just the one making this request.
+    await db.user_sessions.delete_many({"user_id": user["user_id"]})
+    token = make_session_token(user["user_id"])
+    await persist_session(user["user_id"], token)
+    return {"session_token": token, "user": public_user(user)}
 
 
 class PhoneBody(BaseModel):

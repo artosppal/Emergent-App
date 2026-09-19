@@ -112,7 +112,7 @@ export default function Privacy() {
         </P>
 
         <H>Kontak</H>
-        <P>Ada pertanyaan soal privasi? Hubungi kami di artosppal@gmail.com.</P>
+        <P>Ada pertanyaan soal privasi? Hubungi kami di support@notifin.online.</P>
 
         <P>Kebijakan ini bisa diperbarui sewaktu-waktu; perubahan penting akan diinformasikan di dalam aplikasi.</P>
       </ScrollView>

@@ -94,6 +94,68 @@ class TestAuth:
         assert r.status_code in (401, 503), f"unexpected: {r.status_code} {r.text}"
 
 
+# --------------------- change / forgot / reset password ---------------------
+class TestPassword:
+    def test_change_password_wrong_current_401(self, s):
+        u = register_verified(s, f"test_chpw_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", "TEST ChPw")
+        r = s.put(f"{API}/auth/password",
+                  json={"current_password": "nope", "new_password": "newpass123"},
+                  headers=auth(u["session_token"]))
+        assert r.status_code == 401
+
+    def test_change_password_success_and_relogin(self, s):
+        email = f"test_chpw_{uuid.uuid4().hex[:8]}@example.com"
+        u = register_verified(s, email, "rahasia123", "TEST ChPw")
+        r = s.put(f"{API}/auth/password",
+                  json={"current_password": "rahasia123", "new_password": "newpass123"},
+                  headers=auth(u["session_token"]))
+        assert r.status_code == 200, r.text
+
+        r_old = s.post(f"{API}/auth/login", json={"email": email, "password": "rahasia123"})
+        assert r_old.status_code == 401
+
+        r_new = s.post(f"{API}/auth/login", json={"email": email, "password": "newpass123"})
+        assert r_new.status_code == 200, r_new.text
+
+    def test_change_password_too_short_422(self, s):
+        u = register_verified(s, f"test_chpw_{uuid.uuid4().hex[:8]}@example.com", "rahasia123", "TEST ChPw")
+        r = s.put(f"{API}/auth/password",
+                  json={"current_password": "rahasia123", "new_password": "abc"},
+                  headers=auth(u["session_token"]))
+        assert r.status_code == 422
+
+    def test_forgot_password_unknown_email_is_silent(self, s):
+        r = s.post(f"{API}/auth/forgot-password", json={"email": "nobody_xyz@example.com"})
+        assert r.status_code == 200, r.text
+        assert "dev_code" not in r.json()
+
+    def test_forgot_and_reset_password_flow(self, s):
+        email = f"test_reset_{uuid.uuid4().hex[:8]}@example.com"
+        register_verified(s, email, "rahasia123", "TEST Reset")
+
+        r = s.post(f"{API}/auth/forgot-password", json={"email": email})
+        assert r.status_code == 200, r.text
+        code = r.json()["dev_code"]
+
+        r2 = s.post(f"{API}/auth/reset-password",
+                    json={"email": email, "code": code, "new_password": "resetpass123"})
+        assert r2.status_code == 200, r2.text
+        assert "session_token" in r2.json()
+
+        r_old = s.post(f"{API}/auth/login", json={"email": email, "password": "rahasia123"})
+        assert r_old.status_code == 401
+        r_new = s.post(f"{API}/auth/login", json={"email": email, "password": "resetpass123"})
+        assert r_new.status_code == 200, r_new.text
+
+    def test_reset_password_wrong_code_400(self, s):
+        email = f"test_reset_{uuid.uuid4().hex[:8]}@example.com"
+        register_verified(s, email, "rahasia123", "TEST Reset")
+        s.post(f"{API}/auth/forgot-password", json={"email": email})
+        r = s.post(f"{API}/auth/reset-password",
+                   json={"email": email, "code": "000000", "new_password": "resetpass123"})
+        assert r.status_code == 400
+
+
 # --------------------- subscriptions + freemium ---------------------
 class TestSubscriptionsAndFreemium:
     created_ids = []

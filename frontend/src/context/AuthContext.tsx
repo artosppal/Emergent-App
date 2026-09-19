@@ -30,6 +30,7 @@ export interface User {
   wa_notif_used?: number;
   wa_notif_limit?: number | null;
   onboarding_completed: boolean;
+  has_password?: boolean;
 }
 
 interface AuthState {
@@ -46,6 +47,9 @@ interface AuthState {
   loginWhatsappVerify: (phone: string, code: string) => Promise<void>;
   verifyPhoneRequest: (phone: string) => Promise<string>;
   verifyPhoneConfirm: (code: string) => Promise<void>;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
+  changePassword: (currentPassword: string | null, newPassword: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -184,6 +188,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applyUser],
   );
 
+  const forgotPassword = useCallback(async (email: string) => {
+    await api.forgotPassword(email);
+  }, []);
+
+  const resetPassword = useCallback(
+    async (email: string, code: string, newPassword: string) => {
+      const res: any = await api.resetPassword({ email, code, new_password: newPassword });
+      await setToken(res.session_token);
+      applyUser(res.user);
+    },
+    [applyUser],
+  );
+
+  const changePassword = useCallback(async (currentPassword: string | null, newPassword: string) => {
+    await api.changePassword({ current_password: currentPassword, new_password: newPassword });
+  }, []);
+
   const loginWithGoogle = useCallback(async () => {
     if (!GOOGLE_CLIENT_ID) {
       throw new Error("Login Google belum dikonfigurasi");
@@ -231,6 +252,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loginWhatsappVerify,
         verifyPhoneRequest,
         verifyPhoneConfirm,
+        forgotPassword,
+        resetPassword,
+        changePassword,
         loginWithGoogle,
         logout,
         refresh,

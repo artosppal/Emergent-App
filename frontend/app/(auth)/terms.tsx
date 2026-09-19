@@ -120,7 +120,7 @@ export default function Terms() {
         </P>
 
         <H>Kontak</H>
-        <P>Pertanyaan seputar syarat & ketentuan ini bisa dikirim ke artosppal@gmail.com.</P>
+        <P>Pertanyaan seputar syarat & ketentuan ini bisa dikirim ke support@notifin.online.</P>
       </ScrollView>
     </View>
   );

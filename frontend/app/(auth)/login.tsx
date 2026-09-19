@@ -31,7 +31,9 @@ type Mode =
   | "wa-register"
   | "verify-wa-register"
   | "wa-login"
-  | "verify-wa-login";
+  | "verify-wa-login"
+  | "forgot-password"
+  | "reset-password";
 
 export default function Login() {
   const insets = useSafeAreaInsets();
@@ -46,6 +48,8 @@ export default function Login() {
     registerWhatsappResend,
     loginWhatsappRequest,
     loginWhatsappVerify,
+    forgotPassword,
+    resetPassword,
     loginWithGoogle,
   } = useAuth();
   const toast = useToast();
@@ -150,6 +154,48 @@ export default function Login() {
     }
   };
 
+  const submitForgotPassword = async () => {
+    if (!email.trim()) {
+      toast.show(t("auth.errEmail"), "error");
+      return;
+    }
+    setLoading(true);
+    try {
+      await forgotPassword(email.trim());
+      setPendingTarget(email.trim().toLowerCase());
+      setOtp("");
+      setPassword("");
+      setConfirmPassword("");
+      setCooldown(RESEND_COOLDOWN_S);
+      setMode("reset-password");
+    } catch (e) {
+      toast.show(errMsg(e), "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitResetPassword = async () => {
+    if (otp.trim().length !== 6) return;
+    if (password.length < 6) {
+      toast.show(t("auth.errPasswordLen"), "error");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.show(t("auth.errPasswordMismatch"), "error");
+      return;
+    }
+    setLoading(true);
+    try {
+      await resetPassword(pendingTarget, otp.trim(), password);
+      toast.show(t("auth.resetPasswordSuccessToast"), "success");
+    } catch (e) {
+      toast.show(errMsg(e), "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const submitOtp = async () => {
     if (otp.trim().length !== 6) return;
     setLoading(true);
@@ -178,6 +224,8 @@ export default function Login() {
         await registerWhatsappResend(pendingTarget);
       } else if (mode === "verify-wa-login") {
         await loginWhatsappRequest(pendingTarget);
+      } else if (mode === "reset-password") {
+        await forgotPassword(pendingTarget);
       }
       setCooldown(RESEND_COOLDOWN_S);
       toast.show(t("auth.otpResentToast"), "info");
@@ -339,6 +387,102 @@ export default function Login() {
                 </Pressable>
               </View>
             </>
+          ) : mode === "forgot-password" ? (
+            <>
+              <Text style={styles.formTitle}>{t("auth.forgotPasswordTitle")}</Text>
+              <Text style={styles.formSub}>{t("auth.forgotPasswordSub")}</Text>
+
+              <View style={{ marginTop: spacing.xl }}>
+                <Input
+                  testID="forgot-email-input"
+                  label={t("auth.emailLabel")}
+                  icon="email"
+                  placeholder={t("auth.emailPlaceholder")}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="go"
+                  onSubmitEditing={submitForgotPassword}
+                />
+
+                <Button
+                  testID="forgot-password-submit"
+                  title={t("auth.forgotPasswordSubmit")}
+                  onPress={submitForgotPassword}
+                  loading={loading}
+                />
+
+                <Pressable onPress={() => setMode("login")} style={styles.toggle}>
+                  <Text style={styles.toggleText}>{t("auth.otpBack")}</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : mode === "reset-password" ? (
+            <>
+              <Text style={styles.formTitle}>{t("auth.resetPasswordTitle")}</Text>
+              <Text style={styles.formSub}>
+                {t("auth.otpSubEmail")}{" "}
+                <Text style={{ fontFamily: font.bold, color: colors.onSurface }}>{pendingTarget}</Text>
+              </Text>
+
+              <View style={{ marginTop: spacing.xl }}>
+                <Input
+                  testID="reset-otp-input"
+                  label={t("auth.otpTitle")}
+                  icon="shield-key"
+                  placeholder={t("auth.otpPlaceholder")}
+                  value={otp}
+                  onChangeText={(v) => setOtp(v.replace(/\D/g, "").slice(0, 6))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                <Input
+                  testID="reset-new-password-input"
+                  label={t("auth.newPasswordLabel")}
+                  icon="lock"
+                  placeholder={t("auth.passwordPlaceholder")}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                />
+                <Input
+                  testID="reset-confirm-password-input"
+                  label={t("auth.confirmPasswordLabel")}
+                  icon="lock-check"
+                  placeholder={t("auth.confirmPasswordPlaceholder")}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                  error={
+                    confirmPassword.length > 0 && confirmPassword !== password
+                      ? t("auth.errPasswordMismatch")
+                      : undefined
+                  }
+                  returnKeyType="go"
+                  onSubmitEditing={submitResetPassword}
+                />
+
+                <Button
+                  testID="reset-password-submit"
+                  title={t("auth.resetPasswordSubmit")}
+                  onPress={submitResetPassword}
+                  loading={loading}
+                  disabled={otp.trim().length !== 6 || !confirmPassword || password !== confirmPassword}
+                />
+
+                <Pressable onPress={resendOtp} disabled={cooldown > 0} style={styles.toggle}>
+                  <Text style={[styles.toggleLink, cooldown > 0 && { color: colors.muted }]}>
+                    {cooldown > 0 ? t("auth.otpResendWait", { s: cooldown }) : t("auth.otpResend")}
+                  </Text>
+                </Pressable>
+
+                <Pressable onPress={() => setMode("login")} style={styles.toggle}>
+                  <Text style={styles.toggleText}>{t("auth.otpBack")}</Text>
+                </Pressable>
+              </View>
+            </>
           ) : (
             <>
               <Text style={styles.formTitle}>
@@ -382,6 +526,18 @@ export default function Login() {
                   returnKeyType={isRegister ? "next" : "go"}
                   onSubmitEditing={isRegister ? undefined : submit}
                 />
+                {!isRegister && (
+                  <Pressable
+                    testID="forgot-password-link"
+                    onPress={() => {
+                      setPassword("");
+                      setMode("forgot-password");
+                    }}
+                    style={styles.forgotLink}
+                  >
+                    <Text style={styles.toggleLink}>{t("auth.forgotPasswordLink")}</Text>
+                  </Pressable>
+                )}
                 {isRegister && (
                   <Input
                     testID="confirm-password-input"
@@ -510,6 +666,7 @@ const styles = StyleSheet.create({
   line: { flex: 1, height: 1, backgroundColor: colors.border },
   dividerText: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted },
   toggle: { alignItems: "center", paddingVertical: spacing.lg },
+  forgotLink: { alignItems: "flex-end", marginTop: -spacing.sm, marginBottom: spacing.sm },
   toggleText: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.muted },
   toggleLink: { fontFamily: font.bold, color: colors.brand },
 });

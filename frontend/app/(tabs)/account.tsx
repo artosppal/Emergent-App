@@ -31,7 +31,7 @@ export default function Account() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const tabH = useContext(BottomTabBarHeightContext) ?? 64 + insets.bottom;
-  const { user, logout, setUser, verifyPhoneRequest, verifyPhoneConfirm } = useAuth();
+  const { user, logout, setUser, verifyPhoneRequest, verifyPhoneConfirm, changePassword } = useAuth();
   const { showUpgrade } = useUpgrade();
   const toast = useToast();
   const { t, language, locale, setLanguage } = useLanguage();
@@ -54,6 +54,11 @@ export default function Account() {
     user?.monthly_limit ? String(user.monthly_limit) : "",
   );
   const [savingLimit, setSavingLimit] = useState(false);
+  const [passwordModal, setPasswordModal] = useState(false);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState("");
+  const [newPasswordInput, setNewPasswordInput] = useState("");
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
 
   const savePhone = async () => {
     setSavingPhone(true);
@@ -93,6 +98,38 @@ export default function Account() {
       }
     } finally {
       setSavingLimit(false);
+    }
+  };
+
+  const closePasswordModal = () => {
+    setPasswordModal(false);
+    setCurrentPasswordInput("");
+    setNewPasswordInput("");
+    setConfirmPasswordInput("");
+  };
+
+  const savePassword = async () => {
+    if (newPasswordInput.length < 6) {
+      toast.show(t("auth.errPasswordLen"), "error");
+      return;
+    }
+    if (newPasswordInput !== confirmPasswordInput) {
+      toast.show(t("auth.errPasswordMismatch"), "error");
+      return;
+    }
+    setSavingPassword(true);
+    try {
+      await changePassword(user?.has_password ? currentPasswordInput : null, newPasswordInput);
+      closePasswordModal();
+      toast.show(t("account.passwordSaved"), "success");
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        toast.show(t("account.currentPasswordWrong"), "error");
+      } else {
+        toast.show(t("account.errSavePassword"), "error");
+      }
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -581,6 +618,17 @@ export default function Account() {
       {/* Actions */}
       <Text style={styles.sectionLabel}>{t("account.otherSection")}</Text>
       <View style={styles.card}>
+        <Pressable
+          testID="change-password-button"
+          style={styles.actionRow}
+          onPress={() => setPasswordModal(true)}
+        >
+          <MaterialCommunityIcons name="lock-reset" size={20} color={colors.muted} />
+          <Text style={styles.actionText}>
+            {user?.has_password ? t("account.changePasswordAction") : t("account.setPasswordAction")}
+          </Text>
+        </Pressable>
+        <View style={styles.divider} />
         {isPremium && !user?.cancel_at_period_end && (
           <>
             <Pressable
@@ -629,6 +677,71 @@ export default function Account() {
               loading={savingPhone}
             />
             <Pressable style={styles.cancelBtn} onPress={() => setPhoneModal(false)}>
+              <Text style={styles.cancelText}>{t("common.cancel")}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Change/set password modal */}
+      <Modal
+        visible={passwordModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closePasswordModal}
+      >
+        <Pressable style={styles.backdrop} onPress={closePasswordModal}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>
+              {user?.has_password ? t("account.changePasswordAction") : t("account.setPasswordAction")}
+            </Text>
+            <Text style={styles.modalSub}>
+              {user?.has_password ? t("account.changePasswordSub") : t("account.setPasswordSub")}
+            </Text>
+            {user?.has_password && (
+              <Input
+                testID="current-password-input"
+                label={t("account.currentPasswordLabel")}
+                icon="lock"
+                placeholder={t("auth.passwordPlaceholder")}
+                value={currentPasswordInput}
+                onChangeText={setCurrentPasswordInput}
+                secureTextEntry
+                autoFocus
+              />
+            )}
+            <Input
+              testID="new-password-input"
+              label={t("auth.newPasswordLabel")}
+              icon="lock-plus"
+              placeholder={t("auth.passwordPlaceholder")}
+              value={newPasswordInput}
+              onChangeText={setNewPasswordInput}
+              secureTextEntry
+              autoFocus={!user?.has_password}
+            />
+            <Input
+              testID="confirm-new-password-input"
+              label={t("auth.confirmPasswordLabel")}
+              icon="lock-check"
+              placeholder={t("auth.confirmPasswordPlaceholder")}
+              value={confirmPasswordInput}
+              onChangeText={setConfirmPasswordInput}
+              secureTextEntry
+              error={
+                confirmPasswordInput.length > 0 && confirmPasswordInput !== newPasswordInput
+                  ? t("auth.errPasswordMismatch")
+                  : undefined
+              }
+            />
+            <Button
+              testID="save-password-button"
+              title={t("account.save")}
+              onPress={savePassword}
+              loading={savingPassword}
+              disabled={!newPasswordInput || newPasswordInput !== confirmPasswordInput}
+            />
+            <Pressable style={styles.cancelBtn} onPress={closePasswordModal}>
               <Text style={styles.cancelText}>{t("common.cancel")}</Text>
             </Pressable>
           </Pressable>

@@ -100,6 +100,12 @@ export const api = {
     apiFetch("/auth/phone/verify/confirm", { method: "POST", body: JSON.stringify({ code }) }),
   updateLimit: (monthly_limit: number | null) =>
     apiFetch("/auth/limit", { method: "PUT", body: JSON.stringify({ monthly_limit }) }),
+  changePassword: (body: { current_password?: string | null; new_password: string }) =>
+    apiFetch("/auth/password", { method: "PUT", body: JSON.stringify(body) }),
+  forgotPassword: (email: string) =>
+    apiFetch("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
+  resetPassword: (body: { email: string; code: string; new_password: string }) =>
+    apiFetch("/auth/reset-password", { method: "POST", body: JSON.stringify(body) }),
   submitOnboarding: (body: {
     use_case: string;
     sub_range: string;
