@@ -52,17 +52,25 @@ Tagline: "Biar gak ada lagi langganan yang kelewat atau lupa di-cancel."
 ### Continuing via Claude Code (2026-09) — no longer Emergent's builder
 - Payment gateway ✅ — Mayar.id (Membership API v2), not Midtrans/Xendit as the FASE 4 line below still says; ignore that mention. `/auth/upgrade` starts a real checkout, `/webhooks/mayar` is the only place `plan` actually flips.
 - Onboarding survey ✅ — 4-question survey + tour, `POST /api/onboarding`.
-- Pricing page ✅ (2026-09) — standalone `/pricing` (`frontend/app/pricing.tsx`), reachable logged-in or out. Logged-out: full marketing chrome + an 8-row feature comparison table + FAQ. Logged-in: lightweight header, plan cards reflect the visitor's actual plan (inert pill on their current plan, Premium CTA opens the real upgrade sheet instead of registration). Linked from Account ("Bandingkan semua fitur paket"). `Nav`/`Footer`/`SectionHeading` were pulled out of `LandingPage.tsx` into `src/components/landing/shared.tsx` so this page could reuse them.
+- Pricing page ✅ — standalone `/pricing` (`frontend/app/pricing.tsx`), reachable logged-in or out. Logged-out: full marketing chrome + an 8-row feature comparison table + FAQ. Logged-in: lightweight header, plan cards reflect the visitor's actual plan (inert pill on their current plan, Premium CTA opens the real upgrade sheet instead of registration). Linked from Account ("Bandingkan semua fitur paket"). `Nav`/`Footer`/`SectionHeading` were pulled out of `LandingPage.tsx` into `src/components/landing/shared.tsx` so this page could reuse them.
+- Change/set + forgot/reset password ✅ — `PUT /auth/password`, `POST /auth/forgot-password`, `POST /auth/reset-password` in `server.py`, reusing the existing email-OTP infra. "Lupa password?" link on login. Account gets a "Ganti/Buat Password" row. Found+fixed a real bug along the way: `make_session_token()` only encoded user_id + second-precision iat/exp, so two sessions for the same user inside one wall-clock second collided on `user_sessions`' unique index — fixed with a random `jti` claim.
+- Ringkasan pengeluaran bulanan via email ✅ — `monthly_summary_sweep()` in the scheduler loop, Premium-only, idempotent via `users.last_summary_month`. `POST /test/simulate-monthly-summary` for testing without waiting a month.
+- Social share ✅ — share icon on the dashboard's total-spend card (`Share.share()` native, Web Share API → clipboard fallback on web).
+- Referral program ✅ — every account gets a unique `referral_code`; referrer gets 30 days free Premium when their referee becomes Premium (not at signup — see `complete_referral_if_any()`, hooked into the Mayar upgrade path). `GET /referral/me`, `/referral` screen (code + copy/share + history), referral code field on both register forms (prefillable via `?ref=` query param).
+- Trust badges + payment transparency ✅ — no fabricated testimonials (none exist yet); landing TrustBar + a PaymentTrust row (QRIS/e-wallet/bank/card icons + Mayar.id note) on every Pricing card instead.
+- Blog + FAQ + real sitemap/robots ✅ — `/blog` (index + `[slug]`, content in `src/content/blog.ts`, 4 articles, id+en, no CMS yet) and standalone `/faq` (was landing-page-section-only before). `public/sitemap.xml` lists every public page; `public/robots.txt` now `Disallow`s the private/app-only paths that expo-router's static web export makes URL-reachable regardless of login state.
+- Support contact ✅ — swapped the personal `artosppal@gmail.com` (privacy/terms pages) for `support@notifin.online`; added to the shared Footer alongside /pricing, /faq, /blog links.
+- Also found+fixed: `pytest.ini`'s `--dist loadscope` silently ignored the `xdist_group` marks meant to pin `test_notifin_groups.py`/`test_notifin_fase3.py`'s cross-class shared state to one worker — switched to `--dist loadgroup`. Same bug existed latently in `test_notifin_backend.py` too (no mark at all, just hadn't been hit) — added the mark there once adding new test classes finally triggered it.
 
 ## Backlog (next phases)
-- Ringkasan pengeluaran mingguan/bulanan via email (already advertised in landing/pricing copy as a Premium feature — not yet implemented, build to match).
-- Social share of monthly total.
-- Referral program.
+- No open backlog items from the 2026-09 Claude Code continuation pass — all were completed (see above). Next priorities are the user's call.
 - Optional cleanup: @app.on_event → lifespan; shadow* → boxShadow.
 
 ## Pending user inputs / build notes
 - Push migrated off the Emergent relay to Expo Push Notification Service (2026-09): `send_push()`/`/api/register-push` in `backend/server.py` now store the device token in `db.push_tokens` and POST straight to `https://exp.host/--/api/v2/push/send`, no API key needed. Client (`AuthContext.tsx`) calls `Notifications.getExpoPushTokenAsync({ projectId })` instead of `getDevicePushTokenAsync()` — this needs an EAS project id in `app.json` (`extra.eas.projectId`) to return a real token; until an EAS project exists it fails closed (caught, non-blocking) same as before.
 - FONNTE_TOKEN (backend/.env) empty → WA simulation mode. User will provide token later.
+- Blog has 4 launch articles but no CMS — adding more means editing `src/content/blog.ts` directly (bilingual id/en entries) until/unless a real content pipeline is built.
+- Referral reward (30 days Premium) is a constant (`REFERRAL_REWARD_DAYS` in `server.py`) — change it there if the business decides on a different amount.
 
 ## Next Tasks
-- Next backlog item per user priority: weekly/monthly spending summary email, then social share, then referral program.
+- Fase 0–3 of PROMPT.md's plan are complete (local env verified, all backlog items shipped). Next: Fase 4 — deploy (Vercel + Railway), per the user's call on timing.
