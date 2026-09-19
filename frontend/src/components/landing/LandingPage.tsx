@@ -55,6 +55,8 @@ export function LandingPage() {
       >
         <Hero isWide={isWide} onSignup={goRegister} onLogin={goLogin} t={t} />
 
+        <TrustBar isWide={isWide} t={t} />
+
         <View onLayout={registerSection("features")}>
           <Features isWide={isWide} t={t} />
         </View>
@@ -142,6 +144,31 @@ function DashboardMock({ t }: any) {
       <View style={styles.mockRow}>
         <Text style={styles.mockTotalLabel}>{t("landing.mockTotalLabel")}</Text>
         <Text style={styles.mockTotalValue}>Rp487.000</Text>
+      </View>
+    </View>
+  );
+}
+
+// ---------------- Trust bar ----------------
+// Honest social-proof substitute: we don't have real testimonials yet, and
+// won't fabricate quotes from fictional users, so this leads with concrete,
+// verifiable trust signals instead (no card required, real payment
+// processor, no lock-in).
+function TrustBar({ isWide, t }: any) {
+  const items = [
+    { icon: "credit-card-off-outline", text: t("landing.trust1") },
+    { icon: "shield-lock-outline", text: t("landing.trust2") },
+    { icon: "close-circle-outline", text: t("landing.trust3") },
+  ];
+  return (
+    <View style={styles.trustBar}>
+      <View style={[styles.trustBarInner, isWide && styles.trustBarInnerWide]}>
+        {items.map((it) => (
+          <View key={it.text} style={styles.trustBarItem}>
+            <MaterialCommunityIcons name={it.icon as any} size={18} color={colors.brand} />
+            <Text style={styles.trustBarText}>{it.text}</Text>
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -308,6 +335,37 @@ export function Pricing({
             )}
           </View>
         </View>
+
+        <PaymentTrust t={t} />
+      </View>
+    </View>
+  );
+}
+
+function PaymentTrust({ t }: any) {
+  const methods = [
+    { icon: "qrcode", label: t("landing.payQris") },
+    { icon: "wallet-outline", label: t("landing.payEwallet") },
+    { icon: "bank-outline", label: t("landing.payBank") },
+    { icon: "credit-card-outline", label: t("landing.payCard") },
+  ];
+  return (
+    <View style={styles.paymentTrust}>
+      <View style={styles.paymentMethods}>
+        {methods.map((m) => (
+          <View key={m.label} style={styles.paymentMethodPill}>
+            <MaterialCommunityIcons name={m.icon as any} size={16} color={colors.onSurfaceSecondary} />
+            <Text style={styles.paymentMethodText}>{m.label}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={styles.trustRow}>
+        <MaterialCommunityIcons name="shield-check-outline" size={16} color={colors.muted} />
+        <Text style={styles.trustText}>{t("landing.paymentTrustNote")}</Text>
+      </View>
+      <View style={styles.trustRow}>
+        <MaterialCommunityIcons name="lock-outline" size={16} color={colors.muted} />
+        <Text style={styles.trustText}>{t("landing.privacyTrustNote")}</Text>
       </View>
     </View>
   );
@@ -380,6 +438,20 @@ const styles = StyleSheet.create({
   heroCtaRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.xl },
   heroTrustRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.lg },
   heroTrustText: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted },
+
+  trustBar: { width: "100%", borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
+  trustBarInner: {
+    width: "100%",
+    maxWidth: 1120,
+    alignSelf: "center",
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+    flexDirection: "column",
+    gap: spacing.md,
+  },
+  trustBarInnerWide: { flexDirection: "row", justifyContent: "space-around", gap: spacing.xl },
+  trustBarItem: { flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center" },
+  trustBarText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurfaceSecondary },
 
   heroVisualWrap: { marginTop: spacing["3xl"], width: "100%", maxWidth: 360, alignItems: "center" },
   mockCard: {
@@ -549,6 +621,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandTertiary,
   },
   freeActiveText: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.brandDark },
+
+  paymentTrust: { alignItems: "center", marginTop: spacing["2xl"] },
+  paymentMethods: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.sm },
+  paymentMethodPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  paymentMethodText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurfaceSecondary },
+  trustRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md },
+  trustText: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted, textAlign: "center" },
 
   ctaBanner: {
     backgroundColor: colors.brand,

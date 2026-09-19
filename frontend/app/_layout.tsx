@@ -54,15 +54,15 @@ function RootNavigator() {
     const inAuth = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "onboarding";
     const atRoot = segments.length === 0;
-    const inPricing = segments[0] === "pricing";
+    // Public marketing routes handle their own gate (show marketing chrome
+    // to logged-out visitors instead of bouncing to /login) and stay
+    // reachable for logged-in users too, regardless of plan/onboarding —
+    // "/pricing" in particular doubles as an in-app "compare plans" page.
+    const inPublicRoute = ["pricing", "faq", "blog"].includes(segments[0] || "");
     const needsOnboarding = !!user && !user.onboarding_completed;
-    // Root ("/") and "/pricing" handle their own gate: both show marketing
-    // chrome to logged-out visitors instead of bouncing straight to /login,
-    // and "/pricing" also doubles as an in-app "compare plans" page for
-    // logged-in users, so it stays reachable regardless of plan/onboarding.
-    if (!user && !inAuth && !atRoot && !inPricing) {
+    if (!user && !inAuth && !atRoot && !inPublicRoute) {
       router.replace("/(auth)/login");
-    } else if (needsOnboarding && !inOnboarding && !inPricing) {
+    } else if (needsOnboarding && !inOnboarding && !inPublicRoute) {
       router.replace("/onboarding");
     } else if (user && !needsOnboarding && (inAuth || atRoot || inOnboarding)) {
       router.replace("/(tabs)");
@@ -92,6 +92,9 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="pricing" />
+      <Stack.Screen name="faq" />
+      <Stack.Screen name="blog/index" />
+      <Stack.Screen name="blog/[slug]" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="(tabs)" />

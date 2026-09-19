@@ -1,4 +1,14 @@
 User-agent: *
 Allow: /
+# The app itself renders at these paths regardless of login state (expo-router
+# statically exports every route) — logged-out visitors get redirected, but
+# there's no reason for a crawler to index the shell or spend budget on it.
+Disallow: /subscriptions
+Disallow: /subscription/
+Disallow: /groups
+Disallow: /group/
+Disallow: /account
+Disallow: /onboarding
+Disallow: /spending-history
 
 Sitemap: https://notifin.online/sitemap.xml
