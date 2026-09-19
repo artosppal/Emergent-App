@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { api, setToken, getToken, ApiError } from "@/src/lib/api";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -67,14 +68,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         granted = req.granted;
       }
       if (!granted) return;
-      const tokenResp = await Notifications.getDevicePushTokenAsync();
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      const tokenResp = await Notifications.getExpoPushTokenAsync({ projectId });
       await api.registerPush({
         user_id: userId,
         platform: Platform.OS,
-        device_token: String(tokenResp.data),
+        device_token: tokenResp.data,
       });
     } catch {
-      // Expo Go / no FCM — non-blocking.
+      // Expo Go without an EAS project / no push credentials yet — non-blocking.
     }
   }, []);
 

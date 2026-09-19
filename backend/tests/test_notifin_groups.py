@@ -32,6 +32,9 @@ def _register(s, prefix="owner"):
     r = s.post(f"{API}/auth/register",
                json={"email": email, "password": "rahasia123", "name": f"TEST {prefix}"})
     assert r.status_code == 200, r.text
+    code = r.json()["dev_code"]
+    r = s.post(f"{API}/auth/register/verify", json={"email": email, "code": code})
+    assert r.status_code == 200, r.text
     d = r.json()
     return {"email": email, "token": d["session_token"], "user": d["user"]}
 

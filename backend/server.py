@@ -38,9 +38,10 @@ JWT_SECRET = os.environ.get('JWT_SECRET', 'notifin-dev-secret')
 JWT_ALG = 'HS256'
 SESSION_DAYS = 7
 
-# Emergent managed push
-PUSH_BASE_URL = "https://integrations.emergentagent.com"
-PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
+# Push via Expo Push Notification Service (exp.host) — no API key needed,
+# tokens are stored locally in db.push_tokens (one per user_id, overwritten
+# on re-register) instead of relayed to a third-party push provider.
+EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 
 # Google Sign-In (direct OAuth 2.0, authorization code + PKCE from the client,
 # exchanged for tokens here on the backend with the client secret). Both stay
@@ -126,11 +127,7 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-_push_client = httpx.AsyncClient(
-    base_url=PUSH_BASE_URL,
-    headers={"X-Push-Key": PUSH_KEY},
-    timeout=10.0,
-)
+_push_client = httpx.AsyncClient(timeout=10.0)
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +295,16 @@ async def check_otp(purpose: str, key: str, code: str) -> dict:
         raise HTTPException(status_code=400, detail="Kode salah")
     await db.otp_codes.delete_one({"_id": doc["_id"]})
     return doc.get("payload", {}) or {}
+
+
+def with_dev_code(resp: dict, code: str, live: bool) -> dict:
+    """Echoes the OTP code back in the response while its channel is in
+    simulation mode (no RESEND_API_KEY / FONNTE_TOKEN), so local dev and
+    tests can complete the flow without reading server logs. Never happens
+    once the channel is live (production)."""
+    if not live:
+        resp["dev_code"] = code
+    return resp
 
 
 def otp_email_body(code: str) -> str:
@@ -481,7 +488,7 @@ async def register(body: RegisterBody):
         {"name": body.name, "email": body.email.lower(), "password_hash": hash_password(body.password)},
     )
     await send_email(body.email.lower(), "Kode verifikasi Notifin", otp_email_body(code))
-    return {"pending": True, "email": body.email.lower()}
+    return with_dev_code({"pending": True, "email": body.email.lower()}, code, email_live())
 
 
 @api_router.post("/auth/register/verify")
@@ -515,7 +522,7 @@ async def register_resend(body: ResendEmailOtpBody):
         raise HTTPException(status_code=404, detail="Belum ada pendaftaran yang menunggu verifikasi")
     code = await create_otp("register_email", body.email.lower(), existing_otp.get("payload"))
     await send_email(body.email.lower(), "Kode verifikasi Notifin", otp_email_body(code))
-    return {"pending": True, "email": body.email.lower()}
+    return with_dev_code({"pending": True, "email": body.email.lower()}, code, email_live())
 
 
 @api_router.post("/auth/register/whatsapp")
@@ -534,7 +541,7 @@ async def register_whatsapp(body: RegisterWhatsappBody):
         raise HTTPException(status_code=409, detail="Nomor WhatsApp sudah terdaftar")
     code = await create_otp("register_whatsapp", phone, {"name": body.name, "email": email_norm, "phone": phone})
     await send_whatsapp(phone, otp_wa_message(code))
-    return {"pending": True, "phone": phone}
+    return with_dev_code({"pending": True, "phone": phone}, code, wa_live())
 
 
 @api_router.post("/auth/register/whatsapp/verify")
@@ -578,7 +585,7 @@ async def register_whatsapp_resend(body: ResendWhatsappOtpBody):
         raise HTTPException(status_code=404, detail="Belum ada pendaftaran yang menunggu verifikasi")
     code = await create_otp("register_whatsapp", phone, existing_otp.get("payload"))
     await send_whatsapp(phone, otp_wa_message(code))
-    return {"pending": True, "phone": phone}
+    return with_dev_code({"pending": True, "phone": phone}, code, wa_live())
 
 
 @api_router.post("/auth/login")
@@ -606,7 +613,7 @@ async def login_whatsapp_request(body: WhatsappLoginRequestBody):
         raise HTTPException(status_code=404, detail="Nomor WhatsApp belum terdaftar")
     code = await create_otp("login_whatsapp", phone)
     await send_whatsapp(phone, otp_wa_message(code))
-    return {"pending": True, "phone": phone}
+    return with_dev_code({"pending": True, "phone": phone}, code, wa_live())
 
 
 @api_router.post("/auth/login/whatsapp/verify")
@@ -1136,7 +1143,7 @@ async def phone_verify_request(body: PhoneVerifyRequestBody, user: dict = Depend
         raise HTTPException(status_code=409, detail="Nomor WhatsApp sudah dipakai akun lain")
     code = await create_otp("verify_phone", user["user_id"], {"phone": phone})
     await send_whatsapp(phone, otp_wa_message(code))
-    return {"pending": True, "phone": phone}
+    return with_dev_code({"pending": True, "phone": phone}, code, wa_live())
 
 
 @api_router.post("/auth/phone/verify/confirm")
@@ -2189,38 +2196,40 @@ async def group_history(gid: str, user: dict = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
-# Push notifications (Emergent managed relay)
+# Push notifications (Expo Push Notification Service)
 # ---------------------------------------------------------------------------
 @api_router.post("/register-push", status_code=201)
 async def register_push(body: RegisterPushBody):
-    try:
-        resp = await _push_client.post("/api/v1/push/users/register", json=body.model_dump())
-        if resp.status_code == 401:
-            # Preview env has a placeholder push key; real key is injected at deploy.
-            logger.info("register-push skipped: push key not active yet")
-            return {"status": "skipped"}
-        if resp.status_code >= 500:
-            raise HTTPException(502, "Push provider unavailable")
-        resp.raise_for_status()
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.warning(f"register-push failed (non-blocking): {e}")
-        return {"status": "skipped"}
+    await db.push_tokens.update_one(
+        {"user_id": body.user_id},
+        {"$set": {
+            "platform": body.platform,
+            "device_token": body.device_token,
+            "updated_at": now_utc().isoformat(),
+        }},
+        upsert=True,
+    )
     return {"status": "registered"}
 
 
-async def send_push(recipients: List[str], data: dict, idempotency_key: Optional[str] = None) -> None:
+async def send_push(recipients: List[str], data: dict) -> None:
     if not recipients:
         return
     if "title" not in data or "message" not in data:
         raise ValueError("data must include title and message")
-    payload: dict = {"recipients": recipients[:100], "data": data}
-    if idempotency_key:
-        payload["$idempotency_key"] = idempotency_key
-    resp = await _push_client.post("/api/v1/push/trigger", json=payload)
-    if resp.status_code == 401:
-        raise HTTPException(500, "EMERGENT_PUSH_KEY missing or invalid")
+    tokens = await db.push_tokens.find(
+        {"user_id": {"$in": recipients[:100]}}, {"_id": 0, "device_token": 1}
+    ).to_list(100)
+    messages = [
+        {"to": t["device_token"], "title": data["title"], "body": data["message"], "sound": "default"}
+        for t in tokens
+        if t.get("device_token", "").startswith(("ExponentPushToken[", "ExpoPushToken["))
+    ]
+    if not messages:
+        return
+    resp = await _push_client.post(EXPO_PUSH_URL, json=messages,
+                                    headers={"Accept": "application/json",
+                                             "Content-Type": "application/json"})
     if resp.status_code >= 500:
         raise HTTPException(502, "Push provider unavailable")
     resp.raise_for_status()
@@ -4377,6 +4386,10 @@ app.add_middleware(
         "https://emergent-app-vert.vercel.app",
         "https://notifin.online",
         "https://www.notifin.online",
+        # Expo web dev server (`expo start --web`) — harmless in production,
+        # only reachable from someone's own machine.
+        "http://localhost:8081",
+        "http://localhost:19006",
     ],
     allow_methods=["*"],
     allow_headers=["*"],

@@ -48,6 +48,9 @@ def _register(s, prefix="u"):
                json={"email": email, "password": "rahasia123",
                      "name": f"TEST_F3_{prefix}"})
     assert r.status_code == 200, r.text
+    code = r.json()["dev_code"]
+    r = s.post(f"{API}/auth/register/verify", json={"email": email, "code": code})
+    assert r.status_code == 200, r.text
     d = r.json()
     return {"email": email, "token": d["session_token"], "user": d["user"]}
 
@@ -352,7 +355,7 @@ class TestReminderSweep:
         assert "TEST_F3_Sweeper" in msg
         assert "TEST_F3_SweepNetflix" in msg
         assert "Rp65.000" in msg
-        assert "besok" in msg
+        assert "besok" in msg.lower()  # headline is uppercase ("BESOK!") by design, see reminder_headline()
         assert rec["status"] == "simulated"
         assert rec["simulated"] is True
 

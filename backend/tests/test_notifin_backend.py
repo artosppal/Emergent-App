@@ -21,15 +21,26 @@ def s():
 def free_user(s):
     """Fresh free user for isolated CRUD + freemium tests."""
     email = f"test_{uuid.uuid4().hex[:10]}@example.com"
-    r = s.post(f"{API}/auth/register",
-               json={"email": email, "password": "rahasia123", "name": "TEST User"})
-    assert r.status_code == 200, r.text
-    data = r.json()
+    data = register_verified(s, email, "rahasia123", "TEST User")
     return {"email": email, "token": data["session_token"], "user": data["user"]}
 
 
 def auth(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def register_verified(s, email, password, name):
+    """Full register -> verify flow. Registration is OTP-gated (see
+    docs/email-otp.md); in local/simulation mode (no RESEND_API_KEY) the
+    backend echoes the code as `dev_code` on the /auth/register response
+    specifically so tests and local dev can complete the flow."""
+    r = s.post(f"{API}/auth/register",
+               json={"email": email, "password": password, "name": name})
+    assert r.status_code == 200, r.text
+    code = r.json()["dev_code"]
+    r = s.post(f"{API}/auth/register/verify", json={"email": email, "code": code})
+    assert r.status_code == 200, r.text
+    return r.json()
 
 
 # --------------------- health ---------------------
@@ -52,8 +63,7 @@ class TestAuth:
         email, pw = "budi@test.com", "rahasia123"
         r = s.post(f"{API}/auth/login", json={"email": email, "password": pw})
         if r.status_code == 401:
-            s.post(f"{API}/auth/register",
-                   json={"email": email, "password": pw, "name": "Budi Santoso"})
+            register_verified(s, email, pw, "Budi Santoso")
             r = s.post(f"{API}/auth/login", json={"email": email, "password": pw})
         assert r.status_code == 200, r.text
         body = r.json()
@@ -75,8 +85,13 @@ class TestAuth:
         assert r.json()["user"]["plan"] == "free"
 
     def test_google_session_invalid(self, s):
-        r = s.post(f"{API}/auth/session", json={"session_id": "invalid-xyz-123"})
-        assert r.status_code == 401
+        # Direct PKCE flow (see PROMPT.md architecture note) — body is an
+        # authorization code + redirect_uri, not a proxied session_id.
+        r = s.post(f"{API}/auth/session",
+                   json={"code": "invalid-xyz-123", "redirect_uri": "https://example.com/callback"})
+        # 401 when Google OAuth is configured and rejects the code; 503 when
+        # GOOGLE_CLIENT_ID/SECRET are unset locally (see PROMPT.md env table).
+        assert r.status_code in (401, 503), f"unexpected: {r.status_code} {r.text}"
 
 
 # --------------------- subscriptions + freemium ---------------------
@@ -148,7 +163,18 @@ class TestSubscriptionsAndFreemium:
     def test_upgrade_requires_configured_mayar(self, s, free_user):
         # /auth/upgrade now starts a real Mayar checkout instead of flipping
         # the plan directly — until MAYAR_API_KEY etc. are set (post-KYC),
-        # it must fail clearly rather than silently granting premium.
+        # it must fail clearly rather than silently granting premium. It also
+        # requires a verified phone (see server.py:upgrade) — go through that
+        # flow first so this actually reaches the Mayar-config check.
+        phone = f"0812{str(uuid.uuid4().int)[-8:]}"
+        r = s.post(f"{API}/auth/phone/verify/request",
+                   json={"phone": phone}, headers=auth(free_user["token"]))
+        assert r.status_code == 200, r.text
+        code = r.json()["dev_code"]
+        r = s.post(f"{API}/auth/phone/verify/confirm",
+                   json={"code": code}, headers=auth(free_user["token"]))
+        assert r.status_code == 200, r.text
+
         r = s.post(f"{API}/auth/upgrade", json={"tier": "monthly"},
                    headers=auth(free_user["token"]))
         assert r.status_code in (503, 200), r.text
@@ -190,10 +216,21 @@ class TestDashboard:
 # --------------------- channels ---------------------
 class TestChannels:
     def test_update_channels(self, s, free_user):
+        # Enabling the whatsapp channel requires a verified phone number
+        # first (see server.py:update_channels) — go through that flow.
+        phone = f"0812{str(uuid.uuid4().int)[-8:]}"
+        r = s.post(f"{API}/auth/phone/verify/request",
+                   json={"phone": phone}, headers=auth(free_user["token"]))
+        assert r.status_code == 200, r.text
+        code = r.json()["dev_code"]
+        r = s.post(f"{API}/auth/phone/verify/confirm",
+                   json={"code": code}, headers=auth(free_user["token"]))
+        assert r.status_code == 200, r.text
+
         r = s.put(f"{API}/auth/channels",
                   json={"push": False, "whatsapp": True},
                   headers=auth(free_user["token"]))
-        assert r.status_code == 200
+        assert r.status_code == 200, r.text
         # Verify via /auth/me
         me = s.get(f"{API}/auth/me", headers=auth(free_user["token"])).json()
         assert me["user"]["notify_channels"] == {"push": False, "whatsapp": True}

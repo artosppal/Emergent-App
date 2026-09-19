@@ -7,7 +7,7 @@ Tagline: "Biar gak ada lagi langganan yang kelewat atau lupa di-cancel."
 
 ## Architecture
 - Frontend: Expo (SDK 54) + expo-router, React Native. Plus Jakarta Sans (static instances generated from variable font via fonttools). MaterialCommunityIcons.
-- Backend: FastAPI + MongoDB (motor). JWT (bcrypt) auth + Emergent-managed Google OAuth. httpx for Emergent push relay.
+- Backend: FastAPI + MongoDB (motor). JWT (bcrypt) auth + Google OAuth (direct PKCE). httpx for Expo Push Notification Service.
 - Design: "Tactile / Playful LIGHT", brand green #059669. Bottom tabs (Beranda / Langganan / Akun). Glass headers + tab bar.
 
 ## User Personas
@@ -54,8 +54,7 @@ Tagline: "Biar gak ada lagi langganan yang kelewat atau lupa di-cancel."
 - Optional cleanup: @app.on_event → lifespan; shadow* → boxShadow.
 
 ## Pending user inputs / build notes
-- Android push requires user to supply Firebase google-services.json + deploy/build (does not work in Expo Go/preview). Guide given twice; file NOT yet provided. When provided: place at /app/frontend/google-services.json and add "googleServicesFile": "./google-services.json" under expo.android in app.json.
-- EMERGENT_PUSH_KEY is placeholder; auto-set at deploy.
+- Push migrated off the Emergent relay to Expo Push Notification Service (2026-09): `send_push()`/`/api/register-push` in `backend/server.py` now store the device token in `db.push_tokens` and POST straight to `https://exp.host/--/api/v2/push/send`, no API key needed. Client (`AuthContext.tsx`) calls `Notifications.getExpoPushTokenAsync({ projectId })` instead of `getDevicePushTokenAsync()` — this needs an EAS project id in `app.json` (`extra.eas.projectId`) to return a real token; until an EAS project exists it fails closed (caught, non-blocking) same as before.
 - FONNTE_TOKEN (backend/.env) empty → WA simulation mode. User will provide token later.
 
 ## Next Tasks
