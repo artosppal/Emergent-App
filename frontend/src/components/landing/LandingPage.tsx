@@ -258,14 +258,14 @@ function Pricing({ isTablet, onSignup, t }: any) {
       <View style={styles.sectionInner}>
         <SectionHeading eyebrow={t("landing.pricingEyebrow")} title={t("landing.pricingTitle")} />
         <View style={[styles.pricingRow, isTablet && styles.pricingRowWide]}>
-          <View style={styles.pricingCard}>
+          <View style={[styles.pricingCard, isTablet && styles.pricingCardRowFlex]}>
             <Text style={styles.pricingPlanTitle}>{t("landing.pricingFreeTitle")}</Text>
             <View style={styles.pricingPriceRow}>
               <Text style={styles.pricingPrice}>{t("landing.pricingFreePrice")}</Text>
             </View>
             <Text style={styles.pricingPriceSuffix}>{t("landing.pricingFreePriceSuffix")}</Text>
 
-            <View style={styles.pricingItemsFill}>
+            <View style={[styles.pricingItems, isTablet && styles.pricingItemsFillWide]}>
               {freeItems.map((it) => (
                 <PricingItem key={it} label={it} />
               ))}
@@ -279,7 +279,14 @@ function Pricing({ isTablet, onSignup, t }: any) {
             />
           </View>
 
-          <View style={[styles.pricingCard, styles.pricingCardHighlight, isTablet && styles.pricingCardHighlightWide]}>
+          <View
+            style={[
+              styles.pricingCard,
+              isTablet && styles.pricingCardRowFlex,
+              styles.pricingCardHighlight,
+              isTablet && styles.pricingCardHighlightWide,
+            ]}
+          >
             <LinearGradient
               colors={[colors.brand, colors.brandDark]}
               start={{ x: 0, y: 0 }}
@@ -299,7 +306,7 @@ function Pricing({ isTablet, onSignup, t }: any) {
             </View>
             <Text style={styles.pricingYearlyNote}>{t("landing.pricingPremiumYearlyNote")}</Text>
 
-            <View style={styles.pricingItemsFill}>
+            <View style={[styles.pricingItems, isTablet && styles.pricingItemsFillWide]}>
               {premiumItems.map((it) => (
                 <PricingItem key={it} label={it} inverted />
               ))}
@@ -573,13 +580,20 @@ const styles = StyleSheet.create({
   pricingRow: { flexDirection: "column", gap: spacing.lg },
   pricingRowWide: { flexDirection: "row", alignItems: "stretch", gap: spacing.xl },
   pricingCard: {
-    flex: 1,
+    // No flex here: flex:1 uses flexBasis 0, which — combined with an
+    // overflow:hidden card and an auto-height column parent (the mobile
+    // stacked layout) — let the card collapse below its own content height
+    // and made the last feature row render underneath the CTA button.
+    // flex:1 for equal-width columns is opted into explicitly (below) only
+    // in the row/desktop layout, where cross-axis stretch gives the card a
+    // definite height and this can't happen.
     backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.lg,
     padding: spacing.xl,
     borderWidth: 1,
     borderColor: colors.border,
   },
+  pricingCardRowFlex: { flex: 1 },
   pricingCardHighlight: {
     borderColor: colors.brandDark,
     overflow: "hidden",
@@ -629,7 +643,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.lg,
   },
-  pricingItemsFill: { flex: 1, marginBottom: spacing.lg },
+  pricingItems: { marginBottom: spacing.lg },
+  pricingItemsFillWide: { flex: 1 },
   pricingItemRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
   pricingItemText: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface },
   goldButton: {
