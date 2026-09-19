@@ -16,9 +16,6 @@ import jwt
 import httpx
 import hashlib
 import random
-import smtplib
-import ssl
-from email.mime.text import MIMEText
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
@@ -68,18 +65,17 @@ def wa_live() -> bool:
     return bool(FONNTE_TOKEN.strip())
 
 
-# Email OTP (plain SMTP — works with Gmail's own SMTP + an App Password, or
-# any other SMTP provider). Simulates (logs the email instead of sending)
-# while unconfigured, same pattern as WhatsApp above.
-SMTP_HOST = os.environ.get("SMTP_HOST", "")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587") or 587)
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-EMAIL_FROM = os.environ.get("EMAIL_FROM", SMTP_USER)
+# Email OTP via Resend's HTTPS API (not raw SMTP — Railway's egress silently
+# drops outbound SMTP ports, which made the old smtplib integration hang for
+# minutes before timing out on every registration). Simulates (logs the email
+# instead of sending) while unconfigured, same pattern as WhatsApp above.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "")
+RESEND_BASE_URL = "https://api.resend.com"
 
 
 def email_live() -> bool:
-    return bool(SMTP_HOST.strip() and SMTP_USER.strip() and SMTP_PASSWORD.strip())
+    return bool(RESEND_API_KEY.strip() and EMAIL_FROM.strip())
 
 
 # Payment via Mayar.id (membership product "Notifin Premium").
@@ -219,24 +215,18 @@ def fmt_rp(v: float) -> str:
     return "Rp" + f"{round(v or 0):,}".replace(",", ".")
 
 
-def _send_email_sync(to: str, subject: str, body: str):
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = EMAIL_FROM
-    msg["To"] = to
-    context = ssl.create_default_context()
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.starttls(context=context)
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(EMAIL_FROM, [to], msg.as_string())
-
-
 async def send_email(to: str, subject: str, body: str) -> bool:
     if not email_live():
         logger.info(f"[EMAIL SIMULASI] -> {to}: {subject}\n{body}")
         return True
     try:
-        await asyncio.to_thread(_send_email_sync, to, subject, body)
+        async with httpx.AsyncClient(base_url=RESEND_BASE_URL, timeout=10.0) as client:
+            resp = await client.post(
+                "/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+                json={"from": EMAIL_FROM, "to": [to], "subject": subject, "text": body},
+            )
+            resp.raise_for_status()
         return True
     except Exception as e:
         logger.warning(f"Email send failed: {e}")
