@@ -100,6 +100,12 @@ export const api = {
     apiFetch("/auth/phone/verify/confirm", { method: "POST", body: JSON.stringify({ code }) }),
   updateLimit: (monthly_limit: number | null) =>
     apiFetch("/auth/limit", { method: "PUT", body: JSON.stringify({ monthly_limit }) }),
+  submitOnboarding: (body: {
+    use_case: string;
+    sub_range: string;
+    referral_source?: string | null;
+    primary_goal?: string | null;
+  }) => apiFetch("/onboarding", { method: "POST", body: JSON.stringify(body) }),
 
   dashboard: () => apiFetch("/dashboard"),
   promos: () => apiFetch("/promos"),

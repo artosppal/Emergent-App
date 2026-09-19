@@ -202,6 +202,7 @@ def public_user(u: dict) -> dict:
         "cancel_at_period_end": bool(u.get("cancel_at_period_end")),
         "wa_notif_used": wa_used,
         "wa_notif_limit": None if plan == "premium" else FREE_WA_NOTIF_LIMIT,
+        "onboarding_completed": bool(u.get("onboarding_completed")),
     }
 
 
@@ -378,6 +379,22 @@ class PhoneVerifyConfirmBody(BaseModel):
     code: str
 
 
+# Post-signup onboarding survey — answers double as sales/ads segmentation
+# data (see enrich_users / build_users_xlsx), so keep these as fixed option
+# sets rather than free text.
+ONBOARDING_USE_CASES = {"personal", "shared", "exploring"}
+ONBOARDING_SUB_RANGES = {"1-3", "4-6", "7-10", "10+"}
+ONBOARDING_REFERRAL_SOURCES = {"instagram", "tiktok", "google", "friend", "play_store", "app_store", "other"}
+ONBOARDING_GOALS = {"avoid_forgotten_trials", "track_spending", "split_with_family", "other"}
+
+
+class OnboardingBody(BaseModel):
+    use_case: str
+    sub_range: str
+    referral_source: Optional[str] = None
+    primary_goal: Optional[str] = None
+
+
 DOWNGRADE_REASONS = {"too_expensive", "rarely_used", "missing_features", "switching_app", "just_trying", "other"}
 
 
@@ -492,6 +509,7 @@ async def register_verify(body: VerifyEmailBody):
         "plan": "free",
         "email_verified": True,
         "notify_channels": {"push": True, "whatsapp": False},
+        "onboarding_completed": False,
         "created_at": now_utc().isoformat(),
     }
     await db.users.insert_one(user)
@@ -550,6 +568,7 @@ async def register_whatsapp_verify(body: VerifyWhatsappRegisterBody):
         "phone": phone,
         "phone_verified": True,
         "notify_channels": {"push": True, "whatsapp": True},
+        "onboarding_completed": False,
         "created_at": now_utc().isoformat(),
     }
     await db.users.insert_one(user)
@@ -673,6 +692,7 @@ async def google_session(body: GoogleAuthBody):
             "password_hash": None,
             "plan": "free",
             "notify_channels": {"push": True, "whatsapp": False},
+            "onboarding_completed": False,
             "created_at": now_utc().isoformat(),
         }
         await db.users.insert_one(user)
@@ -684,6 +704,35 @@ async def google_session(body: GoogleAuthBody):
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return {"user": public_user(user)}
+
+
+@api_router.post("/onboarding")
+async def submit_onboarding(body: OnboardingBody, user: dict = Depends(get_current_user)):
+    if body.use_case not in ONBOARDING_USE_CASES:
+        raise HTTPException(status_code=422, detail="use_case tidak valid")
+    if body.sub_range not in ONBOARDING_SUB_RANGES:
+        raise HTTPException(status_code=422, detail="sub_range tidak valid")
+    if body.referral_source and body.referral_source not in ONBOARDING_REFERRAL_SOURCES:
+        raise HTTPException(status_code=422, detail="referral_source tidak valid")
+    if body.primary_goal and body.primary_goal not in ONBOARDING_GOALS:
+        raise HTTPException(status_code=422, detail="primary_goal tidak valid")
+    answers = {
+        "use_case": body.use_case,
+        "sub_range": body.sub_range,
+        "referral_source": body.referral_source,
+        "primary_goal": body.primary_goal,
+    }
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {
+            "$set": {
+                "onboarding_completed": True,
+                "onboarding_answers": answers,
+                "onboarding_completed_at": now_utc().isoformat(),
+            }
+        },
+    )
+    return {"ok": True}
 
 
 @api_router.post("/auth/logout")
@@ -2250,6 +2299,13 @@ async def enrich_users(docs: List[dict]) -> List[dict]:
             "last_active_at": d.get("last_active_at"),
             "subscription_count": count,
             "deleted_at": d.get("deleted_at"),
+            # Onboarding survey answers — segmentation for sales outreach /
+            # ad-audience targeting (e.g. Meta Custom Audiences), not shown
+            # in-app anywhere.
+            "onboarding_use_case": (d.get("onboarding_answers") or {}).get("use_case"),
+            "onboarding_sub_range": (d.get("onboarding_answers") or {}).get("sub_range"),
+            "onboarding_referral_source": (d.get("onboarding_answers") or {}).get("referral_source"),
+            "onboarding_primary_goal": (d.get("onboarding_answers") or {}).get("primary_goal"),
         }
         for d, count in zip(docs, sub_counts)
     ]
@@ -2349,6 +2405,7 @@ async def admin_create_user(body: AdminCreateUserBody, _: None = Depends(require
         "phone_verified": bool(phone_norm),
         "email_verified": True,
         "notify_channels": {"push": True, "whatsapp": bool(phone_norm)},
+        "onboarding_completed": True,  # admin-created accounts skip the survey
         "created_at": now_utc().isoformat(),
     }
     if body.plan == "premium":
@@ -2551,6 +2608,28 @@ def _excel_dt(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+ONBOARDING_USE_CASE_LABELS = {
+    "personal": "Pribadi",
+    "shared": "Bareng keluarga/teman",
+    "exploring": "Masih coba-coba",
+}
+ONBOARDING_REFERRAL_LABELS = {
+    "instagram": "Instagram",
+    "tiktok": "TikTok",
+    "google": "Google Search",
+    "friend": "Teman/keluarga",
+    "play_store": "Play Store",
+    "app_store": "App Store",
+    "other": "Lainnya",
+}
+ONBOARDING_GOAL_LABELS = {
+    "avoid_forgotten_trials": "Jangan sampai lupa cancel trial",
+    "track_spending": "Pantau pengeluaran bulanan",
+    "split_with_family": "Bagi tagihan bareng keluarga/teman",
+    "other": "Lainnya",
+}
+
+
 def build_users_xlsx(users: List[dict]) -> bytes:
     wb = Workbook()
     ws = wb.active
@@ -2559,6 +2638,7 @@ def build_users_xlsx(users: List[dict]) -> bytes:
     headers = [
         "Nama", "Email", "No. WhatsApp", "Status", "Tanggal Daftar",
         "Premium Sejak", "Premium Sampai", "Jumlah Langganan", "Terakhir Aktif",
+        "Untuk Siapa", "Jumlah Langganan (Survei)", "Sumber Tahu Notifin", "Tujuan Utama",
     ]
     ws.append(headers)
     header_font = Font(bold=True, color="FFFFFF")
@@ -2583,6 +2663,10 @@ def build_users_xlsx(users: List[dict]) -> bytes:
             _excel_dt(u.get("premium_expires_at")),
             u.get("subscription_count", 0),
             _excel_dt(u.get("last_active_at")),
+            ONBOARDING_USE_CASE_LABELS.get(u.get("onboarding_use_case"), "-"),
+            u.get("onboarding_sub_range") or "-",
+            ONBOARDING_REFERRAL_LABELS.get(u.get("onboarding_referral_source"), "-"),
+            ONBOARDING_GOAL_LABELS.get(u.get("onboarding_primary_goal"), "-"),
         ]
         ws.append(row)
         r = ws.max_row

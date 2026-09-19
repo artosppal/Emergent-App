@@ -28,6 +28,7 @@ export interface User {
   cancel_at_period_end?: boolean;
   wa_notif_used?: number;
   wa_notif_limit?: number | null;
+  onboarding_completed: boolean;
 }
 
 interface AuthState {

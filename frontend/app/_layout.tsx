@@ -52,12 +52,16 @@ function RootNavigator() {
   useEffect(() => {
     if (loading) return;
     const inAuth = segments[0] === "(auth)";
+    const inOnboarding = segments[0] === "onboarding";
     const atRoot = segments.length === 0;
+    const needsOnboarding = !!user && !user.onboarding_completed;
     // Root ("/") handles its own gate: it shows the landing page to logged-out
     // web visitors instead of bouncing straight to /login.
     if (!user && !inAuth && !atRoot) {
       router.replace("/(auth)/login");
-    } else if (user && (inAuth || atRoot)) {
+    } else if (needsOnboarding && !inOnboarding) {
+      router.replace("/onboarding");
+    } else if (user && !needsOnboarding && (inAuth || atRoot || inOnboarding)) {
       router.replace("/(tabs)");
     }
   }, [user, loading, segments, router]);
@@ -85,6 +89,7 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="(auth)" />
+      <Stack.Screen name="onboarding" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="subscription/form" options={{ presentation: "modal" }} />
       <Stack.Screen name="spending-history" />
