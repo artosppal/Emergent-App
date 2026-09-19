@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.notifinpreview.ch8qmp",
+      "bundleIdentifier": "com.notifin.app",
       "infoPlist": {
         "UIBackgroundModes": ["remote-notification"]
       }
@@ -21,7 +21,7 @@
         "backgroundColor": "#059669"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.notifinpreview.ch8qmp",
+      "package": "com.notifin.app",
       "permissions": ["POST_NOTIFICATIONS"]
     },
     "web": {
