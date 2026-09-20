@@ -23,6 +23,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr, BeforeValidator
 from typing import List, Optional, Annotated, Any
 from datetime import datetime, timezone, timedelta, date
+from contextlib import asynccontextmanager
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -125,7 +126,18 @@ def mayar_live() -> bool:
         MAYAR_API_KEY.strip() and MAYAR_PRODUCT_ID.strip() and MAYAR_TIER_ID.strip()
     )
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Bodies of _on_startup/_on_shutdown live further down the file, next to
+    # the helpers (db, scheduler_loop, etc.) they call -- safe since Python
+    # only looks those names up when this actually runs, well after the
+    # whole module has finished loading.
+    await _on_startup()
+    yield
+    await _on_shutdown()
+
+
+app = FastAPI(lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO,
@@ -4652,8 +4664,7 @@ async def admin_page():
 # ---------------------------------------------------------------------------
 # Startup: indexes
 # ---------------------------------------------------------------------------
-@app.on_event("startup")
-async def startup():
+async def _on_startup():
     try:
         await db.users.create_index("email", unique=True)
         await db.users.create_index("user_id", unique=True)
@@ -4732,7 +4743,6 @@ app.add_middleware(
 )
 
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
+async def _on_shutdown():
     client.close()
     await _push_client.aclose()

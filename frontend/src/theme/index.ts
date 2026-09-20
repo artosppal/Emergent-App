@@ -81,17 +81,11 @@ export const fontSize = {
 
 export const shadow = {
   card: {
-    shadowColor: "#0B3D2E",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
+    boxShadow: "0px 6px 16px rgba(11, 61, 46, 0.08)",
     elevation: 3,
   },
   soft: {
-    shadowColor: "#0B3D2E",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
+    boxShadow: "0px 2px 8px rgba(11, 61, 46, 0.05)",
     elevation: 2,
   },
 };
