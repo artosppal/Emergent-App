@@ -2,11 +2,24 @@
 // that reuse its chrome (e.g. the pricing page) — nav bar, section heading,
 // and footer, plus the layout styles they depend on.
 import React from "react";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors, font, fontSize, radius, spacing } from "@/src/theme";
 
 export const MAX_WIDTH = 1120;
+
+// react-native-web's Linking.openURL() opens mailto: links via window.open(url,
+// "_blank"), which pops a new browser tab that just sits there if the OS/browser
+// has no default mail client wired up -- looks like "it opened the browser
+// instead of my mail app". window.location.href hands the current tab straight
+// to the mailto: handler with no extra tab in between.
+function openSupportEmail() {
+  if (Platform.OS === "web") {
+    window.location.href = "mailto:support@notifin.online";
+  } else {
+    Linking.openURL("mailto:support@notifin.online");
+  }
+}
 
 export function Nav({ isWide, language, onToggleLanguage, onNavPress, onLogin, onSignup, t }: any) {
   return (
@@ -92,7 +105,7 @@ export function Footer({ isTablet, router, t }: any) {
           </Pressable>
         </View>
       </View>
-      <Pressable onPress={() => Linking.openURL("mailto:support@notifin.online")}>
+      <Pressable onPress={openSupportEmail}>
         <Text style={sharedStyles.footerSupport}>{t("landing.footerSupport")} support@notifin.online</Text>
       </Pressable>
       <Text style={sharedStyles.footerCopyright}>
