@@ -179,9 +179,10 @@ class TestSubscriptionsAndFreemium:
             "status": "paid", "reminders": [3, 1, 0], "notes": "TEST",
         }
 
-    def test_create_three_subs_free_plan(self, s, free_user):
+    def test_create_five_subs_free_plan(self, s, free_user):
         tok = free_user["token"]
-        for i, name in enumerate(["TEST_Netflix", "TEST_Spotify", "TEST_YouTube"]):
+        names = ["TEST_Netflix", "TEST_Spotify", "TEST_YouTube", "TEST_Disney", "TEST_HBO"]
+        for name in names:
             r = s.post(f"{API}/subscriptions",
                        json=self._payload(name=name),
                        headers=auth(tok))
@@ -189,11 +190,11 @@ class TestSubscriptionsAndFreemium:
             sub = r.json()["subscription"]
             assert sub["name"] == name
             self.__class__.created_ids.append(sub["id"])
-        assert len(self.__class__.created_ids) == 3
+        assert len(self.__class__.created_ids) == 5
 
-    def test_freemium_limit_reached_on_4th(self, s, free_user):
+    def test_freemium_limit_reached_on_6th(self, s, free_user):
         r = s.post(f"{API}/subscriptions",
-                   json=self._payload(name="TEST_4th"),
+                   json=self._payload(name="TEST_6th"),
                    headers=auth(free_user["token"]))
         assert r.status_code == 403, r.text
         detail = r.json().get("detail")
@@ -265,9 +266,9 @@ class TestSubscriptionsAndFreemium:
         assert r.json()["action"] == "upgraded_to_premium"
         r_me = s.get(f"{API}/auth/me", headers=auth(free_user["token"]))
         assert r_me.json()["user"]["plan"] == "premium"
-        # Now 4th should succeed
+        # Now a 6th (past the free limit) should succeed
         r2 = s.post(f"{API}/subscriptions",
-                    json=self._payload(name="TEST_4thPremium"),
+                    json=self._payload(name="TEST_6thPremium"),
                     headers=auth(free_user["token"]))
         assert r2.status_code == 200, r2.text
         self.__class__.created_ids.append(r2.json()["subscription"]["id"])

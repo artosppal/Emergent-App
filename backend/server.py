@@ -53,8 +53,12 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
-FREE_PLAN_LIMIT = 3
-FREE_WA_NOTIF_LIMIT = 5  # WhatsApp reminders per calendar month on the Free plan; Premium is unlimited.
+FREE_PLAN_LIMIT = 5
+FREE_WA_NOTIF_LIMIT = 5  # WhatsApp reminders per calendar month on the Free plan.
+PREMIUM_WA_SOFT_CAP = 100  # Premium is marketed/shown as unlimited (needs ~33 active
+# monthly subs all reminding in the same month to reach) — this only exists as a
+# cost ceiling against Fonnte-per-message spend on a runaway/abuse edge case, not
+# a real-world limit; normal Premium usage never gets close to it.
 REFERRAL_REWARD_DAYS = 30  # granted to the referrer once their referee becomes Premium
 APP_URL = "https://notifin.online"  # appended to outgoing reminder/invite WhatsApp messages for easy access
 
@@ -1372,6 +1376,7 @@ async def list_subscriptions(
     if status and status != "all":
         q["status"] = status
     docs = await db.subscriptions.find(q, {"_id": 0}).sort("next_due_date", 1).to_list(500)
+    docs = [await advance_personal_sub(d) for d in docs]
     return {"subscriptions": [sub_public(d) for d in docs]}
 
 
@@ -1542,6 +1547,7 @@ async def list_whats_new(user: dict = Depends(get_current_user)):
 async def dashboard(user: dict = Depends(get_current_user)):
     docs = await db.subscriptions.find(
         {"user_id": user["user_id"], "deleted_at": None}, {"_id": 0}).to_list(500)
+    docs = [await advance_personal_sub(d) for d in docs]
 
     total_monthly = 0.0
     by_cat: dict = {}
@@ -1744,6 +1750,31 @@ async def advance_group_sub(s: dict) -> dict:
     if changed:
         s["next_due_date"] = due.isoformat()
         await db.group_subscriptions.update_one(
+            {"id": s["id"]}, {"$set": {"next_due_date": s["next_due_date"]}})
+    return s
+
+
+async def advance_personal_sub(s: dict) -> dict:
+    """Same idea as advance_group_sub: a 'paid' (recurring) personal
+    subscription whose due date has slipped into the past keeps rolling
+    forward on its own, so it doesn't get stuck out of the 'upcoming 7
+    days' window forever just because the user never reopened the app to
+    edit it. Trial subs are left alone — a lapsed trial end date is a
+    one-time decision point, not a recurring bill."""
+    if s.get("status") != "paid":
+        return s
+    try:
+        due = date.fromisoformat(s.get("next_due_date"))
+    except Exception:
+        return s
+    today = date.today()
+    changed = False
+    while due < today:
+        due = add_cycle(due, s.get("billing_cycle", "monthly"))
+        changed = True
+    if changed:
+        s["next_due_date"] = due.isoformat()
+        await db.subscriptions.update_one(
             {"id": s["id"]}, {"$set": {"next_due_date": s["next_due_date"]}})
     return s
 
@@ -2116,13 +2147,13 @@ async def claim_notif(key: str) -> bool:
 
 
 async def consume_wa_quota(user: dict) -> bool:
-    """Premium is unlimited. Free gets FREE_WA_NOTIF_LIMIT WhatsApp reminders
-    per calendar month — returns False (and sends nothing) once used up."""
-    if user.get("plan") == "premium":
-        return True
+    """WhatsApp reminders per calendar month — returns False (and sends nothing)
+    once used up. Free gets FREE_WA_NOTIF_LIMIT; Premium gets the much higher
+    PREMIUM_WA_SOFT_CAP (a cost safety net, not a real-world limit)."""
+    limit = PREMIUM_WA_SOFT_CAP if user.get("plan") == "premium" else FREE_WA_NOTIF_LIMIT
     month = now_utc().strftime("%Y-%m")
     count = user.get("wa_notif_count", 0) if user.get("wa_notif_month") == month else 0
-    if count >= FREE_WA_NOTIF_LIMIT:
+    if count >= limit:
         return False
     await db.users.update_one(
         {"user_id": user["user_id"]},
@@ -2143,6 +2174,7 @@ async def reminder_sweep():
         subs = await db.subscriptions.find(
             {"user_id": u["user_id"], "deleted_at": None}, {"_id": 0}).to_list(500)
         for s in subs:
+            s = await advance_personal_sub(s)
             try:
                 due = date.fromisoformat(s.get("next_due_date"))
             except Exception:
