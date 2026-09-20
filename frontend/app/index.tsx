@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import Head from "expo-router/head";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "@/src/context/AuthContext";
 import { LandingPage } from "@/src/components/landing/LandingPage";
@@ -19,7 +20,24 @@ export default function Index() {
   }, [loading, user, router]);
 
   if (Platform.OS === "web" && !loading && !user) {
-    return <LandingPage />;
+    return (
+      <>
+        <Head>
+          <title>Notifin - Kelola Langgananmu</title>
+          <meta
+            name="description"
+            content="Notifin ingetin kamu sebelum trial gratis berubah jadi tagihan, dan bantu lacak semua pengeluaran langganan bulananmu."
+          />
+          <meta property="og:title" content="Notifin - Kelola Langgananmu" />
+          <meta
+            property="og:description"
+            content="Notifin ingetin kamu sebelum trial gratis berubah jadi tagihan, dan bantu lacak semua pengeluaran langganan bulananmu."
+          />
+          <meta property="og:url" content="https://notifin.online/" />
+        </Head>
+        <LandingPage />
+      </>
+    );
   }
 
   return (

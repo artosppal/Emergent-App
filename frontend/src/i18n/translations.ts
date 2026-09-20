@@ -507,6 +507,7 @@ export const translations = {
       thanksClose: "Oke, Mengerti",
     },
     landing: {
+      navSlogan: "Kelola Langgananmu",
       navFeatures: "Fitur",
       navHow: "Cara Kerja",
       navPricing: "Harga",
@@ -1174,6 +1175,7 @@ export const translations = {
       thanksClose: "Got It",
     },
     landing: {
+      navSlogan: "Manage Your Subscriptions",
       navFeatures: "Features",
       navHow: "How It Works",
       navPricing: "Pricing",

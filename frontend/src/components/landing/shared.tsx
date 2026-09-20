@@ -30,6 +30,7 @@ export function Nav({ isWide, language, onToggleLanguage, onNavPress, onLogin, o
             <MaterialCommunityIcons name="bell-ring" size={20} color={colors.onBrandPrimary} />
           </View>
           <Text style={sharedStyles.brandName}>Notifin</Text>
+          {isWide && <Text style={sharedStyles.brandSlogan}>/ {t("landing.navSlogan")}</Text>}
         </View>
 
         {isWide && (
@@ -141,6 +142,7 @@ export const sharedStyles = StyleSheet.create({
     justifyContent: "center",
   },
   brandName: { fontFamily: font.extrabold, fontSize: fontSize.lg, color: colors.onSurface },
+  brandSlogan: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted },
 
   navLinks: { flexDirection: "row", alignItems: "center", gap: spacing.xl },
   navLink: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurfaceSecondary },
