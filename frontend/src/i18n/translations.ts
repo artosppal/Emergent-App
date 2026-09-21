@@ -561,6 +561,7 @@ export const translations = {
       navFeatures: "Fitur",
       navHow: "Cara Kerja",
       navPricing: "Harga",
+      navFaq: "FAQ",
       navLogin: "Masuk",
       navSignup: "Daftar Gratis",
 
@@ -577,6 +578,7 @@ export const translations = {
       trust2: "Data privat & aman",
       trust3: "Cancel kapan saja, gak ribet",
 
+      mockGreeting: "Halo, Ahmad 👋",
       mockCardTitle: "Jatuh Tempo Minggu Ini",
       mockItem1Name: "Netflix",
       mockItem1Due: "3 hari lagi",
@@ -585,6 +587,7 @@ export const translations = {
       mockItem3Name: "iCloud+",
       mockItem3Due: "Hari ini",
       mockTotalLabel: "Total Bulan Ini",
+      mockActiveLabel: "Langganan Aktif",
 
       featuresEyebrow: "FITUR UTAMA",
       featuresTitle: "Semua yang Kamu Butuhkan Biar Gak Boncos",
@@ -1279,6 +1282,7 @@ export const translations = {
       navFeatures: "Features",
       navHow: "How It Works",
       navPricing: "Pricing",
+      navFaq: "FAQ",
       navLogin: "Log In",
       navSignup: "Sign Up Free",
 
@@ -1295,6 +1299,7 @@ export const translations = {
       trust2: "Private & secure data",
       trust3: "Cancel anytime, no hassle",
 
+      mockGreeting: "Hi, Ahmad 👋",
       mockCardTitle: "Due This Week",
       mockItem1Name: "Netflix",
       mockItem1Due: "in 3 days",
@@ -1303,6 +1308,7 @@ export const translations = {
       mockItem3Name: "iCloud+",
       mockItem3Due: "Today",
       mockTotalLabel: "Total This Month",
+      mockActiveLabel: "Active Subs",
 
       featuresEyebrow: "KEY FEATURES",
       featuresTitle: "Everything You Need to Stop Overspending",

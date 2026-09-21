@@ -10,9 +10,61 @@ import {
   ViewStyle,
   Platform,
 } from "react-native";
+import { Image } from "expo-image";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
+
+// ---------------- Avatar ----------------
+function initialsOf(name?: string | null): string {
+  return (name || "U")
+    .split(" ")
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+export function Avatar({
+  uri,
+  name,
+  size = 40,
+  testID,
+}: {
+  uri?: string | null;
+  name?: string | null;
+  size?: number;
+  testID?: string;
+}) {
+  if (uri) {
+    return (
+      <Image
+        testID={testID}
+        source={{ uri }}
+        style={{ width: size, height: size, borderRadius: radius.pill }}
+        contentFit="cover"
+      />
+    );
+  }
+  return (
+    <View
+      testID={testID}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius.pill,
+        backgroundColor: colors.brandSecondary,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={{ fontFamily: font.extrabold, fontSize: size * 0.36, color: colors.onBrandSecondary }}>
+        {initialsOf(name)}
+      </Text>
+    </View>
+  );
+}
 
 // ---------------- Button ----------------
 interface ButtonProps {

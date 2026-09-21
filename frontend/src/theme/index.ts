@@ -1,23 +1,26 @@
-// Notifin design tokens — sourced from /app/design_guidelines.json
-// Tactile / Playful LIGHT personality.
+// Notifin design tokens.
+// Brand direction: blue primary (see Notifin_Claude_Code_UI_Implementation_Brief.md,
+// section 1.2 — overridden from that doc's "green" call per explicit user decision
+// 2026-09-22: blue is the final brand color, not green). Success/warning/error stay
+// semantic (not brand-tied) per the brief's own color rules.
 
 export const colors = {
-  surface: "#F7FAF8",
-  onSurface: "#182924",
+  surface: "#F6F8FC",
+  onSurface: "#0B1746",
   surfaceSecondary: "#FFFFFF",
-  onSurfaceSecondary: "#182924",
-  surfaceTertiary: "#E8F0EC",
-  onSurfaceTertiary: "#233B33",
-  surfaceInverse: "#182924",
+  onSurfaceSecondary: "#0B1746",
+  surfaceTertiary: "#EAF1FB",
+  onSurfaceTertiary: "#1E3A6E",
+  surfaceInverse: "#0B1746",
   onSurfaceInverse: "#FFFFFF",
-  brand: "#059669",
-  brandPrimary: "#059669",
+  brand: "#2563EB",
+  brandPrimary: "#2563EB",
   onBrandPrimary: "#FFFFFF",
-  brandSecondary: "#D1FAE5",
-  onBrandSecondary: "#065F46",
-  brandTertiary: "#ECFDF5",
-  onBrandTertiary: "#047857",
-  brandDark: "#047857",
+  brandSecondary: "#DBEAFE",
+  onBrandSecondary: "#1D4ED8",
+  brandTertiary: "#EFF6FF",
+  onBrandTertiary: "#1D4ED8",
+  brandDark: "#1D4ED8",
   success: "#10B981",
   onSuccess: "#FFFFFF",
   warning: "#F59E0B",
@@ -26,10 +29,10 @@ export const colors = {
   onError: "#FFFFFF",
   info: "#0D9488",
   onInfo: "#FFFFFF",
-  border: "#E5E7EB",
-  borderStrong: "#D1D5DB",
-  divider: "#F3F4F6",
-  muted: "#6B7280",
+  border: "#E1E7F2",
+  borderStrong: "#C7D2E6",
+  divider: "#EEF2F9",
+  muted: "#64748B",
 };
 
 export const spacing = {
@@ -81,11 +84,11 @@ export const fontSize = {
 
 export const shadow = {
   card: {
-    boxShadow: "0px 6px 16px rgba(11, 61, 46, 0.08)",
+    boxShadow: "0px 6px 16px rgba(15, 35, 90, 0.08)",
     elevation: 3,
   },
   soft: {
-    boxShadow: "0px 2px 8px rgba(11, 61, 46, 0.05)",
+    boxShadow: "0px 2px 8px rgba(15, 35, 90, 0.05)",
     elevation: 2,
   },
 };

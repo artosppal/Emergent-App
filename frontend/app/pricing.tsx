@@ -69,6 +69,7 @@ export default function PricingPage() {
           language={language}
           onToggleLanguage={toggleLanguage}
           onNavPress={onNavPress}
+          onFaq={() => router.push("/faq")}
           onLogin={goLogin}
           onSignup={goRegister}
           t={t}

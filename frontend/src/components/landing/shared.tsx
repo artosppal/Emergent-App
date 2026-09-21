@@ -21,7 +21,7 @@ function openSupportEmail() {
   }
 }
 
-export function Nav({ isWide, language, onToggleLanguage, onNavPress, onLogin, onSignup, t }: any) {
+export function Nav({ isWide, language, onToggleLanguage, onNavPress, onFaq, onLogin, onSignup, t }: any) {
   return (
     <View style={sharedStyles.navBar}>
       <View style={sharedStyles.navInner}>
@@ -43,6 +43,9 @@ export function Nav({ isWide, language, onToggleLanguage, onNavPress, onLogin, o
             </Pressable>
             <Pressable onPress={() => onNavPress("pricing")}>
               <Text style={sharedStyles.navLink}>{t("landing.navPricing")}</Text>
+            </Pressable>
+            <Pressable onPress={onFaq} testID="landing-nav-faq">
+              <Text style={sharedStyles.navLink}>{t("landing.navFaq")}</Text>
             </Pressable>
           </View>
         )}

@@ -29,6 +29,7 @@ export default function BlogIndex() {
         language={language}
         onToggleLanguage={toggleLanguage}
         onNavPress={onNavPress}
+        onFaq={() => router.push("/faq")}
         onLogin={goLogin}
         onSignup={goRegister}
         t={t}

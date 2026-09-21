@@ -43,6 +43,7 @@ export function LandingPage() {
         language={language}
         onToggleLanguage={toggleLanguage}
         onNavPress={scrollToSection}
+        onFaq={() => router.push("/faq")}
         onLogin={goLogin}
         onSignup={goRegister}
         t={t}
@@ -112,24 +113,27 @@ function Hero({ isWide, onSignup, onLogin, t }: any) {
           </View>
         </View>
 
-        <View style={[styles.heroVisualWrap, isWide && { marginTop: 0 }]}>
-          <DashboardMock t={t} />
+        <View style={[styles.heroVisualWrap, isWide && styles.heroVisualWrapWide]}>
+          <HeroVisual isWide={isWide} t={t} />
         </View>
       </View>
     </View>
   );
 }
 
-function DashboardMock({ t }: any) {
+// Two coupled mockups (browser + phone) so the hero shows both surfaces the
+// brief calls for, not just a bare stat card. Built from plain Views/Text —
+// no bitmap assets — so it stays crisp at any size and costs nothing to load.
+function HeroVisual({ isWide, t }: any) {
   const items = [
     { name: t("landing.mockItem1Name"), due: t("landing.mockItem1Due"), color: "#EF4444" },
     { name: t("landing.mockItem2Name"), due: t("landing.mockItem2Due"), color: colors.warning },
     { name: t("landing.mockItem3Name"), due: t("landing.mockItem3Due"), color: colors.brand },
   ];
-  return (
-    <View style={styles.mockCard}>
-      <Text style={styles.mockCardTitle}>{t("landing.mockCardTitle")}</Text>
-      {items.map((it) => (
+
+  const listRows = (count: number) => (
+    <View style={{ gap: spacing.sm }}>
+      {items.slice(0, count).map((it) => (
         <View key={it.name} style={styles.mockRow}>
           <View style={styles.mockRowLeft}>
             <View style={[styles.mockDot, { backgroundColor: it.color }]} />
@@ -140,11 +144,57 @@ function DashboardMock({ t }: any) {
           </View>
         </View>
       ))}
-      <View style={styles.mockDivider} />
-      <View style={styles.mockRow}>
-        <Text style={styles.mockTotalLabel}>{t("landing.mockTotalLabel")}</Text>
-        <Text style={styles.mockTotalValue}>Rp487.000</Text>
+    </View>
+  );
+
+  return (
+    <View style={styles.heroVisualStage}>
+      {/* Browser / laptop surface */}
+      <View style={styles.browserFrame}>
+        <View style={styles.browserChrome}>
+          <View style={styles.browserDots}>
+            <View style={[styles.browserDot, { backgroundColor: "#F87171" }]} />
+            <View style={[styles.browserDot, { backgroundColor: "#FBBF24" }]} />
+            <View style={[styles.browserDot, { backgroundColor: "#34D399" }]} />
+          </View>
+          <View style={styles.browserUrlPill}>
+            <MaterialCommunityIcons name="lock-outline" size={10} color={colors.muted} />
+            <Text style={styles.browserUrlText}>notifin.online</Text>
+          </View>
+        </View>
+        <View style={styles.browserBody}>
+          <Text style={styles.mockGreeting}>{t("landing.mockGreeting")}</Text>
+          <View style={styles.mockStatRow}>
+            <View style={styles.mockStatTile}>
+              <Text style={styles.mockStatLabel}>{t("landing.mockTotalLabel")}</Text>
+              <Text style={styles.mockStatValue}>Rp487.000</Text>
+            </View>
+            <View style={styles.mockStatTile}>
+              <Text style={styles.mockStatLabel}>{t("landing.mockActiveLabel")}</Text>
+              <Text style={styles.mockStatValue}>8</Text>
+            </View>
+          </View>
+          <Text style={styles.mockCardTitle}>{t("landing.mockCardTitle")}</Text>
+          {listRows(3)}
+        </View>
       </View>
+
+      {/* Phone surface — desktop only; on narrow screens the browser mock
+          above already reads as "the app", a second overlapping frame would
+          just crowd a 360–414px viewport. */}
+      {isWide && (
+        <View style={styles.phoneFrame}>
+          <View style={styles.phoneNotch} />
+          <View style={styles.phoneBody}>
+            <Text style={styles.phoneBrand}>Notifin</Text>
+            <View style={styles.phoneStatTile}>
+              <Text style={styles.mockStatLabel}>{t("landing.mockTotalLabel")}</Text>
+              <Text style={styles.phoneStatValue}>Rp487.000</Text>
+            </View>
+            {listRows(2)}
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -453,29 +503,91 @@ const styles = StyleSheet.create({
   trustBarItem: { flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center" },
   trustBarText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurfaceSecondary },
 
-  heroVisualWrap: { marginTop: spacing["3xl"], width: "100%", maxWidth: 360, alignItems: "center" },
-  mockCard: {
+  heroVisualWrap: { marginTop: spacing["3xl"], width: "100%", maxWidth: 400, alignItems: "center" },
+  heroVisualWrapWide: { marginTop: 0, maxWidth: 560, alignItems: "flex-end" },
+  heroVisualStage: { width: "100%", alignItems: "center" },
+
+  browserFrame: {
     width: "100%",
     backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.lg,
-    padding: spacing.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: "hidden",
     ...shadow.card,
   },
-  mockCardTitle: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface, marginBottom: spacing.lg },
+  browserChrome: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surfaceTertiary,
+  },
+  browserDots: { flexDirection: "row", gap: 6 },
+  browserDot: { width: 9, height: 9, borderRadius: 5 },
+  browserUrlPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 3,
+  },
+  browserUrlText: { fontFamily: font.medium, fontSize: 11, color: colors.muted },
+  browserBody: { padding: spacing.xl },
+  mockGreeting: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface, marginBottom: spacing.md },
+  mockStatRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg },
+  mockStatTile: {
+    flex: 1,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  mockStatLabel: { fontFamily: font.semibold, fontSize: 11, color: colors.brandDark },
+  mockStatValue: { fontFamily: font.extrabold, fontSize: fontSize.lg, color: colors.onSurface, marginTop: 2 },
+  mockCardTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface, marginBottom: spacing.sm },
   mockRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
   },
-  mockRowLeft: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  mockDot: { width: 10, height: 10, borderRadius: 5 },
-  mockItemName: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurface },
-  mockDuePill: { paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
-  mockDueText: { fontFamily: font.bold, fontSize: fontSize.sm },
-  mockDivider: { height: 1, backgroundColor: colors.divider, marginVertical: spacing.md },
-  mockTotalLabel: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.muted },
-  mockTotalValue: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: colors.brand },
+  mockRowLeft: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  mockDot: { width: 8, height: 8, borderRadius: 4 },
+  mockItemName: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurface },
+  mockDuePill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
+  mockDueText: { fontFamily: font.bold, fontSize: 11 },
+
+  phoneFrame: {
+    position: "absolute",
+    right: -18,
+    bottom: -28,
+    width: 148,
+    backgroundColor: colors.surfaceInverse,
+    borderRadius: 22,
+    padding: 8,
+    ...shadow.card,
+  },
+  phoneNotch: {
+    alignSelf: "center",
+    width: 44,
+    height: 14,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceInverse,
+    marginBottom: 4,
+  },
+  phoneBody: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 16,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  phoneBrand: { fontFamily: font.extrabold, fontSize: 11, color: colors.brand, marginBottom: 2 },
+  phoneStatTile: { backgroundColor: colors.brandTertiary, borderRadius: radius.sm, padding: spacing.sm },
+  phoneStatValue: { fontFamily: font.extrabold, fontSize: fontSize.base, color: colors.onSurface, marginTop: 1 },
 
   cardGrid: { flexDirection: "column", gap: spacing.lg },
   cardGridWide: { flexDirection: "row", gap: spacing.xl },

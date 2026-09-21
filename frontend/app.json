@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#059669"
+        "backgroundColor": "#2563EB"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.notifin.app",
@@ -35,7 +35,7 @@
       [
         "expo-notifications",
         {
-          "color": "#059669"
+          "color": "#2563EB"
         }
       ],
       [
@@ -44,7 +44,7 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#F7FAF8"
+          "backgroundColor": "#F6F8FC"
         }
       ]
     ],

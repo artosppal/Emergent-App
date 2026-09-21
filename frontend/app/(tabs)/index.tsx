@@ -18,7 +18,6 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
-import { Image } from "expo-image";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -28,7 +27,7 @@ import { useUpgrade } from "@/src/context/UpgradeContext";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { useToast } from "@/src/context/ToastContext";
 import { Subscription, CategoryLogo } from "@/src/components/SubscriptionCard";
-import { EmptyState, Button } from "@/src/components/ui";
+import { EmptyState, Button, Avatar } from "@/src/components/ui";
 import { DonutChart, DonutSlice } from "@/src/components/dashboard/DonutChart";
 import { getCategory } from "@/src/constants/categories";
 import {
@@ -501,12 +500,6 @@ export default function Dashboard() {
   };
 
   const firstName = (user?.name || "").split(" ")[0] || t("dashboard.you");
-  const initials = (user?.name || "U")
-    .split(" ")
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 
   const savingsFromTrials = useMemo(
     () => (data?.ending_trials || []).reduce((sum, tr) => sum + (tr.monthly_cost || 0), 0),
@@ -590,13 +583,7 @@ export default function Dashboard() {
                 <MaterialCommunityIcons name="bell-outline" size={20} color={colors.onSurface} />
               </Pressable>
               <Pressable testID="dashboard-avatar" onPress={() => router.push("/account")} style={styles.avatarBtn}>
-                {user?.picture ? (
-                  <Image source={{ uri: user.picture }} style={styles.avatarImg} contentFit="cover" />
-                ) : (
-                  <View style={styles.avatarFallback}>
-                    <Text style={styles.avatarFallbackText}>{initials}</Text>
-                  </View>
-                )}
+                <Avatar uri={user?.picture} name={user?.name} size={38} />
               </Pressable>
             </View>
           </View>
@@ -1023,16 +1010,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarBtn: { width: 38, height: 38 },
-  avatarImg: { width: 38, height: 38, borderRadius: radius.pill },
-  avatarFallback: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.pill,
-    backgroundColor: colors.brandSecondary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarFallbackText: { fontFamily: font.extrabold, fontSize: fontSize.sm, color: colors.onBrandSecondary },
 
   dateRow: {
     flexDirection: "row",

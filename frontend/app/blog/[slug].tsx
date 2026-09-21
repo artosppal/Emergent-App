@@ -29,6 +29,7 @@ export default function BlogPost() {
           language={language}
           onToggleLanguage={toggleLanguage}
           onNavPress={onNavPress}
+          onFaq={() => router.push("/faq")}
           onLogin={goLogin}
           onSignup={goRegister}
           t={t}
@@ -53,6 +54,7 @@ export default function BlogPost() {
         language={language}
         onToggleLanguage={toggleLanguage}
         onNavPress={onNavPress}
+        onFaq={() => router.push("/faq")}
         onLogin={goLogin}
         onSignup={goRegister}
         t={t}

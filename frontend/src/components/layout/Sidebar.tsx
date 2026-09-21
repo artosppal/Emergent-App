@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Image } from "expo-image";
 import { useRouter, usePathname } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "@/src/context/AuthContext";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { storage } from "@/src/utils/storage";
+import { Avatar } from "@/src/components/ui";
 import {
   colors,
   font,
@@ -56,13 +56,6 @@ export function Sidebar() {
     });
   };
 
-  const initials = (user?.name || "U")
-    .split(" ")
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-
   return (
     <View style={[styles.root, { width: collapsed ? sidebarWidthCollapsed : sidebarWidthExpanded }]}>
       <View style={[styles.header, collapsed && styles.headerCollapsed]}>
@@ -93,13 +86,7 @@ export function Sidebar() {
         onPress={() => router.push("/account")}
         style={[styles.profile, collapsed && styles.profileCollapsed]}
       >
-        {user?.picture ? (
-          <Image source={{ uri: user.picture }} style={styles.avatarImg} contentFit="cover" />
-        ) : (
-          <View style={styles.avatarFallback}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
-        )}
+        <Avatar uri={user?.picture} name={user?.name} size={40} />
         {!collapsed && (
           <View style={{ flex: 1, marginLeft: spacing.md }}>
             <Text style={styles.profileName} numberOfLines={1}>
@@ -221,16 +208,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   profileCollapsed: { justifyContent: "center" },
-  avatarImg: { width: 40, height: 40, borderRadius: radius.pill },
-  avatarFallback: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.pill,
-    backgroundColor: colors.brandSecondary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: font.extrabold, fontSize: fontSize.sm, color: colors.onBrandSecondary },
   profileName: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
   planPill: {
     flexDirection: "row",
