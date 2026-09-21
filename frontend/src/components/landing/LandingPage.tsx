@@ -149,49 +149,58 @@ function HeroVisual({ isWide, t }: any) {
 
   return (
     <View style={styles.heroVisualStage}>
-      {/* Browser / laptop surface */}
-      <View style={styles.browserFrame}>
-        <View style={styles.browserChrome}>
-          <View style={styles.browserDots}>
-            <View style={[styles.browserDot, { backgroundColor: "#F87171" }]} />
-            <View style={[styles.browserDot, { backgroundColor: "#FBBF24" }]} />
-            <View style={[styles.browserDot, { backgroundColor: "#34D399" }]} />
-          </View>
-          <View style={styles.browserUrlPill}>
-            <MaterialCommunityIcons name="lock-outline" size={10} color={colors.muted} />
-            <Text style={styles.browserUrlText}>notifin.online</Text>
-          </View>
-        </View>
-        <View style={styles.browserBody}>
-          <Text style={styles.mockGreeting}>{t("landing.mockGreeting")}</Text>
-          <View style={styles.mockStatRow}>
-            <View style={styles.mockStatTile}>
-              <Text style={styles.mockStatLabel}>{t("landing.mockTotalLabel")}</Text>
-              <Text style={styles.mockStatValue}>Rp487.000</Text>
+      {/* Laptop surface: dark bezel + hinge + keyboard deck, screen holds a
+          mac-style browser chrome with the actual page content inside. */}
+      <View style={styles.laptopShell}>
+        <View style={styles.laptopCamera} />
+        <View style={styles.browserFrame}>
+          <View style={styles.browserChrome}>
+            <View style={styles.browserDots}>
+              <View style={[styles.browserDot, { backgroundColor: "#F87171" }]} />
+              <View style={[styles.browserDot, { backgroundColor: "#FBBF24" }]} />
+              <View style={[styles.browserDot, { backgroundColor: "#34D399" }]} />
             </View>
-            <View style={styles.mockStatTile}>
-              <Text style={styles.mockStatLabel}>{t("landing.mockActiveLabel")}</Text>
-              <Text style={styles.mockStatValue}>8</Text>
+            <View style={styles.browserUrlPill}>
+              <MaterialCommunityIcons name="lock-outline" size={10} color={colors.muted} />
+              <Text style={styles.browserUrlText}>notifin.online</Text>
             </View>
           </View>
-          <Text style={styles.mockCardTitle}>{t("landing.mockCardTitle")}</Text>
-          {listRows(3)}
+          <View style={styles.browserBody}>
+            <Text style={styles.mockGreeting}>{t("landing.mockGreeting")}</Text>
+            <View style={styles.mockStatRow}>
+              <View style={styles.mockStatTile}>
+                <Text style={styles.mockStatLabel}>{t("landing.mockTotalLabel")}</Text>
+                <Text style={styles.mockStatValue}>Rp487.000</Text>
+              </View>
+              <View style={styles.mockStatTile}>
+                <Text style={styles.mockStatLabel}>{t("landing.mockActiveLabel")}</Text>
+                <Text style={styles.mockStatValue}>8</Text>
+              </View>
+            </View>
+            <Text style={styles.mockCardTitle}>{t("landing.mockCardTitle")}</Text>
+            {listRows(3)}
+          </View>
         </View>
+      </View>
+      <View style={styles.laptopHinge} />
+      <View style={styles.laptopBase}>
+        <View style={styles.laptopBaseNotch} />
       </View>
 
       {/* Phone surface — desktop only; on narrow screens the browser mock
           above already reads as "the app", a second overlapping frame would
           just crowd a 360–414px viewport. */}
       {isWide && (
-        <View style={styles.phoneFrame}>
+        <View style={styles.phoneShell}>
           <View style={styles.phoneNotch} />
-          <View style={styles.phoneBody}>
+          <View style={styles.phoneScreen}>
             <Text style={styles.phoneBrand}>Notifin</Text>
             <View style={styles.phoneStatTile}>
               <Text style={styles.mockStatLabel}>{t("landing.mockTotalLabel")}</Text>
               <Text style={styles.phoneStatValue}>Rp487.000</Text>
             </View>
             {listRows(2)}
+            <View style={styles.phoneHomeBar} />
           </View>
         </View>
       )}
@@ -507,14 +516,53 @@ const styles = StyleSheet.create({
   heroVisualWrapWide: { marginTop: 0, maxWidth: 560, alignItems: "flex-end" },
   heroVisualStage: { width: "100%", alignItems: "center" },
 
+  // Laptop shell: dark screen bezel (holds the browser mock) + a thin hinge
+  // + a wider, lighter keyboard-deck bar underneath — a flat, device-shaped
+  // frame instead of a bare card, no bitmap needed.
+  laptopShell: {
+    width: "100%",
+    backgroundColor: "#0B1220",
+    borderRadius: radius.lg,
+    padding: 10,
+    ...shadow.card,
+  },
+  laptopCamera: {
+    alignSelf: "center",
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#334155",
+    marginBottom: 6,
+  },
+  laptopHinge: {
+    alignSelf: "center",
+    width: "94%",
+    height: 6,
+    backgroundColor: "#1E293B",
+  },
+  laptopBase: {
+    alignSelf: "center",
+    width: "108%",
+    height: 12,
+    backgroundColor: "#1E293B",
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+    alignItems: "center",
+    ...shadow.soft,
+  },
+  laptopBaseNotch: {
+    width: 56,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#0B1220",
+    marginTop: 3,
+  },
+
   browserFrame: {
     width: "100%",
     backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: radius.md,
     overflow: "hidden",
-    ...shadow.card,
   },
   browserChrome: {
     flexDirection: "row",
@@ -561,33 +609,48 @@ const styles = StyleSheet.create({
   mockDuePill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
   mockDueText: { fontFamily: font.bold, fontSize: 11 },
 
-  phoneFrame: {
+  phoneShell: {
     position: "absolute",
-    right: -18,
-    bottom: -28,
-    width: 148,
-    backgroundColor: colors.surfaceInverse,
-    borderRadius: 22,
-    padding: 8,
+    right: -22,
+    bottom: -36,
+    width: 152,
+    backgroundColor: "#0B1220",
+    borderRadius: 26,
+    padding: 7,
+    borderWidth: 3,
+    borderColor: "#0B1220",
     ...shadow.card,
   },
   phoneNotch: {
-    alignSelf: "center",
+    position: "absolute",
+    top: 7,
+    left: "50%",
+    marginLeft: -22,
     width: 44,
-    height: 14,
-    borderRadius: 8,
-    backgroundColor: colors.surfaceInverse,
-    marginBottom: 4,
+    height: 16,
+    borderRadius: 9,
+    backgroundColor: "#0B1220",
+    zIndex: 1,
   },
-  phoneBody: {
+  phoneScreen: {
     backgroundColor: colors.surfaceSecondary,
-    borderRadius: 16,
-    padding: spacing.md,
+    borderRadius: 20,
+    paddingTop: 22,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
     gap: spacing.sm,
   },
   phoneBrand: { fontFamily: font.extrabold, fontSize: 11, color: colors.brand, marginBottom: 2 },
   phoneStatTile: { backgroundColor: colors.brandTertiary, borderRadius: radius.sm, padding: spacing.sm },
   phoneStatValue: { fontFamily: font.extrabold, fontSize: fontSize.base, color: colors.onSurface, marginTop: 1 },
+  phoneHomeBar: {
+    alignSelf: "center",
+    width: 46,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong,
+    marginTop: 4,
+  },
 
   cardGrid: { flexDirection: "column", gap: spacing.lg },
   cardGridWide: { flexDirection: "row", gap: spacing.xl },
