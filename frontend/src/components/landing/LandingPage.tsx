@@ -9,11 +9,16 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Button } from "@/src/components/ui";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { colors, font, fontSize, radius, spacing, shadow } from "@/src/theme";
 import { Nav, SectionHeading, Footer, sharedStyles } from "@/src/components/landing/shared";
+
+// Real product mockup, user-owned/generated asset — see hero visual below.
+const HERO_MOCKUP = require("@/assets/images/hero-mockup.jpg");
+const HERO_MOCKUP_RATIO = 921 / 665;
 
 export function LandingPage() {
   const router = useRouter();
@@ -57,6 +62,8 @@ export function LandingPage() {
         <Hero isWide={isWide} onSignup={goRegister} onLogin={goLogin} t={t} />
 
         <TrustBar isWide={isWide} t={t} />
+
+        <ProblemSection isWide={isWide} t={t} />
 
         <View onLayout={registerSection("features")}>
           <Features isWide={isWide} t={t} />
@@ -114,139 +121,14 @@ function Hero({ isWide, onSignup, onLogin, t }: any) {
         </View>
 
         <View style={[styles.heroVisualWrap, isWide && styles.heroVisualWrapWide]}>
-          <HeroVisual isWide={isWide} t={t} />
+          <Image
+            source={HERO_MOCKUP}
+            style={[styles.heroMockupImage, { aspectRatio: HERO_MOCKUP_RATIO }]}
+            contentFit="contain"
+            accessibilityLabel={t("landing.heroMockupAlt")}
+          />
         </View>
       </View>
-    </View>
-  );
-}
-
-// Two coupled mockups (browser + phone) so the hero shows both surfaces the
-// brief calls for. These aren't generic illustrations — the layout mirrors
-// the real dashboard (sidebar + header + stat cards + bill list on PC; a
-// stacked header/stats/list on mobile), just scaled down, so the hero is a
-// preview of the actual product, not an arbitrary mockup. Plain Views/Text
-// only — no bitmap assets.
-const MOCK_NAV_ICONS = ["home", "credit-card-multiple", "account-group", "account"] as const;
-
-function HeroVisual({ isWide, t }: any) {
-  const items = [
-    { name: t("landing.mockItem1Name"), due: t("landing.mockItem1Due"), color: "#EF4444" },
-    { name: t("landing.mockItem2Name"), due: t("landing.mockItem2Due"), color: colors.warning },
-    { name: t("landing.mockItem3Name"), due: t("landing.mockItem3Due"), color: colors.brand },
-  ];
-
-  const listRows = (count: number) => (
-    <View style={{ gap: spacing.sm }}>
-      {items.slice(0, count).map((it) => (
-        <View key={it.name} style={styles.mockRow}>
-          <View style={styles.mockRowLeft}>
-            <View style={[styles.mockDot, { backgroundColor: it.color }]} />
-            <Text style={styles.mockItemName}>{it.name}</Text>
-          </View>
-          <View style={[styles.mockDuePill, { backgroundColor: it.color + "1A" }]}>
-            <Text style={[styles.mockDueText, { color: it.color }]}>{it.due}</Text>
-          </View>
-        </View>
-      ))}
-    </View>
-  );
-
-  const statTile = (label: string, value: string, key: string) => (
-    <View key={key} style={styles.mockStatTile}>
-      <Text style={styles.mockStatLabel} numberOfLines={1}>
-        {label}
-      </Text>
-      <Text style={styles.mockStatValue}>{value}</Text>
-    </View>
-  );
-
-  return (
-    <View style={styles.heroVisualStage}>
-      {/* Laptop surface: dark bezel + hinge + keyboard deck, screen holds a
-          mac-style browser chrome with a scaled replica of the real
-          sidebar + dashboard layout inside — not a generic mockup. */}
-      <View style={styles.laptopShell}>
-        <View style={styles.laptopCamera} />
-        <View style={styles.browserFrame}>
-          <View style={styles.browserChrome}>
-            <View style={styles.browserDots}>
-              <View style={[styles.browserDot, { backgroundColor: "#F87171" }]} />
-              <View style={[styles.browserDot, { backgroundColor: "#FBBF24" }]} />
-              <View style={[styles.browserDot, { backgroundColor: "#34D399" }]} />
-            </View>
-            <View style={styles.browserUrlPill}>
-              <MaterialCommunityIcons name="lock-outline" size={10} color={colors.muted} />
-              <Text style={styles.browserUrlText}>notifin.online</Text>
-            </View>
-          </View>
-          <View style={styles.appShellRow}>
-            <View style={styles.mockSidebar}>
-              <View style={styles.mockSidebarLogo}>
-                <MaterialCommunityIcons name="bell-ring" size={11} color={colors.onBrandPrimary} />
-              </View>
-              {MOCK_NAV_ICONS.map((icon, i) => (
-                <View key={icon} style={[styles.mockNavDot, i === 0 && styles.mockNavDotActive]}>
-                  <MaterialCommunityIcons
-                    name={icon as any}
-                    size={11}
-                    color={i === 0 ? colors.brand : colors.muted}
-                  />
-                </View>
-              ))}
-            </View>
-            <View style={styles.browserBody}>
-              <View style={styles.mockTopRow}>
-                <View style={styles.mockSearchPill} />
-                <View style={styles.mockTopIcons}>
-                  <MaterialCommunityIcons name="bell-outline" size={11} color={colors.muted} />
-                  <View style={styles.mockAvatarDot} />
-                </View>
-              </View>
-              <Text style={styles.mockGreeting}>{t("landing.mockGreeting")}</Text>
-              <View style={styles.mockStatRow}>
-                {statTile(t("landing.mockTotalLabel"), "Rp487rb", "total")}
-                {statTile(t("landing.mockUpcomingLabel"), "3", "upcoming")}
-                {statTile(t("landing.mockSavingsLabel"), "Rp247rb", "savings")}
-                {statTile(t("landing.mockActiveLabel"), "8", "active")}
-              </View>
-              <Text style={styles.mockCardTitle}>{t("landing.mockCardTitle")}</Text>
-              {listRows(3)}
-            </View>
-          </View>
-        </View>
-      </View>
-      <View style={styles.laptopHinge} />
-      <View style={styles.laptopBase}>
-        <View style={styles.laptopBaseNotch} />
-      </View>
-
-      {/* Phone surface — desktop only; on narrow screens the browser mock
-          above already reads as "the app", a second overlapping frame would
-          just crowd a 360–414px viewport. Mirrors the real mobile dashboard:
-          no search bar, stat cards wrap 2-up instead of sitting in a row. */}
-      {isWide && (
-        <View style={styles.phoneShell}>
-          <View style={styles.phoneNotch} />
-          <View style={styles.phoneScreen}>
-            <View style={styles.mockTopRow}>
-              <Text style={styles.phoneBrand}>Notifin</Text>
-              <View style={styles.mockTopIcons}>
-                <MaterialCommunityIcons name="bell-outline" size={11} color={colors.muted} />
-                <View style={styles.mockAvatarDot} />
-              </View>
-            </View>
-            <View style={styles.mockStatRow}>
-              {statTile(t("landing.mockTotalLabel"), "Rp487rb", "p-total")}
-              {statTile(t("landing.mockUpcomingLabel"), "3", "p-upcoming")}
-              {statTile(t("landing.mockSavingsLabel"), "Rp247rb", "p-savings")}
-              {statTile(t("landing.mockActiveLabel"), "8", "p-active")}
-            </View>
-            {listRows(2)}
-            <View style={styles.phoneHomeBar} />
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -269,6 +151,34 @@ function TrustBar({ isWide, t }: any) {
           <View key={it.text} style={styles.trustBarItem}>
             <MaterialCommunityIcons name={it.icon as any} size={18} color={colors.brand} />
             <Text style={styles.trustBarText}>{it.text}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// ---------------- Problem / Pain (#02) ----------------
+function ProblemSection({ isWide, t }: any) {
+  const items = [
+    { icon: "format-list-numbered", title: t("landing.pain1Title"), body: t("landing.pain1Body") },
+    { icon: "calendar-remove-outline", title: t("landing.pain2Title"), body: t("landing.pain2Body") },
+    { icon: "wallet-outline", title: t("landing.pain3Title"), body: t("landing.pain3Body") },
+    { icon: "sleep", title: t("landing.pain4Title"), body: t("landing.pain4Body") },
+    { icon: "help-circle-outline", title: t("landing.pain5Title"), body: t("landing.pain5Body") },
+  ];
+  return (
+    <View style={sharedStyles.section}>
+      <SectionHeading eyebrow={t("landing.painEyebrow")} title={t("landing.painTitle")} />
+      <Text style={styles.problemSubtitle}>{t("landing.painSubtitle")}</Text>
+      <View style={[styles.painGrid, isWide && styles.painGridWide]}>
+        {items.map((it) => (
+          <View key={it.title} style={[styles.featureCard, isWide && styles.painCardWide]}>
+            <View style={styles.featureIcon}>
+              <MaterialCommunityIcons name={it.icon as any} size={26} color={colors.brand} />
+            </View>
+            <Text style={styles.featureTitle}>{it.title}</Text>
+            <Text style={styles.featureBody}>{it.body}</Text>
           </View>
         ))}
       </View>
@@ -555,186 +465,29 @@ const styles = StyleSheet.create({
   trustBarItem: { flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center" },
   trustBarText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurfaceSecondary },
 
-  heroVisualWrap: { marginTop: spacing["3xl"], width: "100%", maxWidth: 400, alignItems: "center" },
-  heroVisualWrapWide: { marginTop: 0, maxWidth: 560, alignItems: "flex-end" },
-  heroVisualStage: { width: "100%", alignItems: "center" },
-
-  // Laptop shell: dark screen bezel (holds the browser mock) + a thin hinge
-  // + a wider, lighter keyboard-deck bar underneath — a flat, device-shaped
-  // frame instead of a bare card, no bitmap needed.
-  laptopShell: {
-    width: "100%",
-    backgroundColor: "#0B1220",
-    borderRadius: radius.lg,
-    padding: 10,
-    ...shadow.card,
-  },
-  laptopCamera: {
-    alignSelf: "center",
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: "#334155",
-    marginBottom: 6,
-  },
-  laptopHinge: {
-    alignSelf: "center",
-    width: "94%",
-    height: 6,
-    backgroundColor: "#1E293B",
-  },
-  laptopBase: {
-    alignSelf: "center",
-    width: "108%",
-    height: 12,
-    backgroundColor: "#1E293B",
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
-    alignItems: "center",
-    ...shadow.soft,
-  },
-  laptopBaseNotch: {
-    width: 56,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#0B1220",
-    marginTop: 3,
-  },
-
-  browserFrame: {
-    width: "100%",
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    overflow: "hidden",
-  },
-  browserChrome: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surfaceTertiary,
-  },
-  browserDots: { flexDirection: "row", gap: 6 },
-  browserDot: { width: 9, height: 9, borderRadius: 5 },
-  browserUrlPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 3,
-  },
-  browserUrlText: { fontFamily: font.medium, fontSize: 11, color: colors.muted },
-
-  appShellRow: { flexDirection: "row", alignItems: "stretch" },
-  mockSidebar: {
-    width: 34,
-    backgroundColor: colors.surfaceTertiary,
-    alignItems: "center",
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
-  },
-  mockSidebarLogo: {
-    width: 18,
-    height: 18,
-    borderRadius: 5,
-    backgroundColor: colors.brand,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.xs,
-  },
-  mockNavDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  mockNavDotActive: { backgroundColor: colors.surfaceSecondary },
-
-  browserBody: { flex: 1, padding: spacing.lg },
-  mockTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
-  mockSearchPill: {
-    flex: 1,
-    maxWidth: 100,
-    height: 13,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceTertiary,
-  },
-  mockTopIcons: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  mockAvatarDot: { width: 13, height: 13, borderRadius: 7, backgroundColor: colors.brandSecondary },
-
-  mockGreeting: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.onSurface, marginBottom: spacing.sm },
-  mockStatRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.md },
-  mockStatTile: {
-    flexBasis: "47%",
-    flexGrow: 1,
-    backgroundColor: colors.brandTertiary,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-  },
-  mockStatLabel: { fontFamily: font.semibold, fontSize: 9, color: colors.brandDark },
-  mockStatValue: { fontFamily: font.extrabold, fontSize: fontSize.sm, color: colors.onSurface, marginTop: 1 },
-  mockCardTitle: { fontFamily: font.bold, fontSize: 11, color: colors.onSurface, marginBottom: spacing.sm },
-  mockRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  mockRowLeft: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  mockDot: { width: 8, height: 8, borderRadius: 4 },
-  mockItemName: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurface },
-  mockDuePill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
-  mockDueText: { fontFamily: font.bold, fontSize: 11 },
-
-  phoneShell: {
-    position: "absolute",
-    right: -22,
-    bottom: -36,
-    width: 184,
-    backgroundColor: "#0B1220",
-    borderRadius: 28,
-    padding: 7,
-    borderWidth: 3,
-    borderColor: "#0B1220",
-    ...shadow.card,
-  },
-  phoneNotch: {
-    position: "absolute",
-    top: 7,
-    left: "50%",
-    marginLeft: -22,
-    width: 44,
-    height: 16,
-    borderRadius: 9,
-    backgroundColor: "#0B1220",
-    zIndex: 1,
-  },
-  phoneScreen: {
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: 22,
-    paddingTop: 22,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  phoneBrand: { fontFamily: font.extrabold, fontSize: 12, color: colors.brand },
-  phoneHomeBar: {
-    alignSelf: "center",
-    width: 46,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderStrong,
-    marginTop: 4,
-  },
+  heroVisualWrap: { marginTop: spacing["3xl"], width: "100%", maxWidth: 460, alignItems: "center" },
+  heroVisualWrapWide: { marginTop: 0, maxWidth: 620, alignItems: "center" },
+  heroMockupImage: { width: "100%" },
 
   cardGrid: { flexDirection: "column", gap: spacing.lg },
   cardGridWide: { flexDirection: "row", gap: spacing.xl },
+
+  problemSubtitle: {
+    fontFamily: font.medium,
+    fontSize: fontSize.base,
+    color: colors.muted,
+    textAlign: "center",
+    marginTop: -spacing.lg,
+    marginBottom: spacing["2xl"],
+    alignSelf: "center",
+    maxWidth: 480,
+  },
+  // 5 pain cards: stack on mobile, wrap 3-then-2 on wide (fixed flexBasis,
+  // not flex:1 — flex:1 would stretch the shorter last row to match the
+  // first row's width instead of leaving it left-aligned).
+  painGrid: { flexDirection: "column", gap: spacing.lg },
+  painGridWide: { flexDirection: "row", flexWrap: "wrap", gap: spacing.lg },
+  painCardWide: { flexBasis: "31%", flexGrow: 0 },
   featureCard: {
     backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.lg,
