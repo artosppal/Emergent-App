@@ -1595,6 +1595,7 @@ async def dashboard(user: dict = Depends(get_current_user)):
             if d.get("status") == "trial" and 0 <= days_left <= 14:
                 pub = sub_public(d)
                 pub["days_left"] = days_left
+                pub["monthly_cost"] = round(m)
                 ending_trials.append(pub)
 
     upcoming.sort(key=lambda x: x.get("days_left", 99))

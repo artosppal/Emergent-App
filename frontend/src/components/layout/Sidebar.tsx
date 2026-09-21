@@ -39,7 +39,7 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const { user, logout } = useAuth();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -142,6 +142,30 @@ export function Sidebar() {
 
       <View style={{ flex: 1 }} />
 
+      {!collapsed && user?.plan === "premium" && (
+        <Pressable
+          testID="sidebar-premium-card"
+          onPress={() => router.push("/account")}
+          style={styles.premiumCard}
+        >
+          <Text style={styles.premiumCardTitle}>{t("dashboard.sidebarPremiumTitle")}</Text>
+          <Text style={styles.premiumCardSub} numberOfLines={1}>
+            {t("dashboard.sidebarPremiumActiveUntil", {
+              date: user?.premium_expires_at
+                ? new Date(user.premium_expires_at).toLocaleDateString(locale, {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })
+                : "-",
+            })}
+          </Text>
+          <View style={styles.premiumCardBtn}>
+            <Text style={styles.premiumCardBtnText}>{t("dashboard.sidebarPremiumCta")}</Text>
+          </View>
+        </Pressable>
+      )}
+
       <Pressable
         testID="sidebar-logout"
         onPress={logout}
@@ -239,4 +263,23 @@ const styles = StyleSheet.create({
   navLabel: { fontFamily: font.semibold, fontSize: fontSize.base, color: colors.muted },
   navLabelActive: { color: colors.brand },
   logoutItem: { marginTop: spacing.md },
+
+  premiumCard: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  premiumCardTitle: { fontFamily: font.bold, fontSize: fontSize.sm, color: "#78350F" },
+  premiumCardSub: { fontFamily: font.medium, fontSize: 11, color: "#92400E", marginTop: 2 },
+  premiumCardBtn: {
+    marginTop: spacing.sm,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    borderRadius: radius.pill,
+    paddingVertical: 6,
+    alignItems: "center",
+  },
+  premiumCardBtnText: { fontFamily: font.bold, fontSize: 11, color: "#92400E" },
 });

@@ -1,8 +1,9 @@
-import React, { useCallback, useContext, useState } from "react";
+import React, { useCallback, useContext, useMemo, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   RefreshControl,
   Pressable,
@@ -11,12 +12,13 @@ import {
   Modal,
   Platform,
   Share,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
-import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -25,10 +27,26 @@ import { useAuth } from "@/src/context/AuthContext";
 import { useUpgrade } from "@/src/context/UpgradeContext";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { useToast } from "@/src/context/ToastContext";
-import { SubscriptionCard, Subscription, CategoryLogo } from "@/src/components/SubscriptionCard";
-import { SectionTitle, EmptyState, Button } from "@/src/components/ui";
+import { Subscription, CategoryLogo } from "@/src/components/SubscriptionCard";
+import { EmptyState, Button } from "@/src/components/ui";
+import { DonutChart, DonutSlice } from "@/src/components/dashboard/DonutChart";
 import { getCategory } from "@/src/constants/categories";
-import { colors, font, fontSize, radius, spacing, shadow, formatRupiah, webMaxWidth } from "@/src/theme";
+import {
+  colors,
+  font,
+  fontSize,
+  radius,
+  spacing,
+  shadow,
+  formatRupiah,
+  sidebarBreakpoint,
+} from "@/src/theme";
+
+// This page's content area is deliberately wider than the app's usual
+// mobile-style `webMaxWidth` cap — the desktop dashboard is a real 3-column
+// layout, not a centered mobile column stretched onto a big screen.
+const WIDE_CONTENT_MAX = 1180;
+const MOBILE_CONTENT_MAX = 560;
 
 interface PromoItem {
   id: string;
@@ -38,16 +56,19 @@ interface PromoItem {
   has_link?: boolean;
 }
 
-// "YYYY-MM-DDTHH:mm" in LOCAL time, the format <input type="datetime-local">
-// needs — toISOString() would shift to UTC and desync the min= guard from
-// what the picker itself is showing.
+interface SubWithMeta extends Subscription {
+  created_at?: string;
+}
+
+interface EndingTrial extends Subscription {
+  monthly_cost?: number;
+}
+
 function toLocalDateTimeInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// Style for the real HTML <input type="datetime-local"> used on web to pick
-// a custom reminder time — a raw DOM node, so it needs plain CSS.
 const webDateTimeInputStyle: React.CSSProperties = {
   flex: 1,
   minWidth: 0,
@@ -68,9 +89,257 @@ interface DashboardData {
   free_limit: number;
   upcoming: Subscription[];
   most_expensive?: (Subscription & { monthly_cost: number }) | null;
-  ending_trials?: Subscription[];
+  ending_trials?: EndingTrial[];
   by_category: { category: string; total: number; count: number }[];
 }
+
+// ---------------------------------------------------------------------------
+// Small presentational pieces used only on this screen.
+// ---------------------------------------------------------------------------
+
+function dueTone(days: number): { bg: string; fg: string } {
+  if (days <= 0) return { bg: "#FEE2E2", fg: "#B91C1C" };
+  if (days <= 2) return { bg: "#FEF3C7", fg: "#B45309" };
+  return { bg: colors.brandTertiary, fg: colors.onBrandTertiary };
+}
+
+function dueLabelText(days: number, t: (k: string, v?: any) => string): string {
+  if (days <= 0) return t("subscriptionCard.dueToday");
+  if (days === 1) return t("subscriptionCard.dueTomorrow");
+  return t("subscriptionCard.dueInDays", { days });
+}
+
+function addedLabelText(createdAt: string | undefined, t: (k: string, v?: any) => string): string {
+  if (!createdAt) return "";
+  const created = new Date(createdAt);
+  if (isNaN(created.getTime())) return "";
+  const createdDay = new Date(created);
+  createdDay.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((today.getTime() - createdDay.getTime()) / 86400000);
+  if (days <= 0) return t("dashboard.recentAddedToday");
+  if (days === 1) return t("dashboard.recentAddedYesterday");
+  return t("dashboard.recentAddedDaysAgo", { days });
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  sub,
+  tint,
+  wide,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  sub?: string;
+  tint: string;
+  wide: boolean;
+  onPress?: () => void;
+}) {
+  return (
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.statCard,
+        { flexBasis: wide ? undefined : "48%", flexGrow: wide ? 1 : 0 },
+        onPress && pressed && { opacity: 0.9 },
+      ]}
+    >
+      <View style={styles.statTopRow}>
+        <Text style={styles.statLabel} numberOfLines={1}>
+          {label}
+        </Text>
+        <View style={[styles.statIconWrap, { backgroundColor: tint + "1A" }]}>
+          <MaterialCommunityIcons name={icon as any} size={15} color={tint} />
+        </View>
+      </View>
+      <Text style={styles.statValue} numberOfLines={1}>
+        {value}
+      </Text>
+      {!!sub && (
+        <Text style={styles.statSub} numberOfLines={1}>
+          {sub}
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
+type BannerTone = "danger" | "brand" | "amber";
+
+const BANNER_PALETTE: Record<BannerTone, { bg: string; border: string; strong: string; fg: string; btnBg: string; btnFg: string }> = {
+  danger: { bg: "#FEF2F2", border: "#FECACA", strong: "#991B1B", fg: "#B91C1C", btnBg: "#DC2626", btnFg: "#FFFFFF" },
+  brand: { bg: colors.brandTertiary, border: "#A7F3D0", strong: colors.brandDark, fg: colors.onBrandTertiary, btnBg: colors.brand, btnFg: "#FFFFFF" },
+  amber: { bg: "#FFFBEB", border: "#FDE68A", strong: "#92400E", fg: "#B45309", btnBg: "#F59E0B", btnFg: "#FFFFFF" },
+};
+
+function BannerCard({
+  tone,
+  icon,
+  title,
+  sub,
+  cta,
+  wide,
+  onPress,
+  testID,
+}: {
+  tone: BannerTone;
+  icon: string;
+  title: string;
+  sub: string;
+  cta: string;
+  wide: boolean;
+  onPress: () => void;
+  testID?: string;
+}) {
+  const p = BANNER_PALETTE[tone];
+  return (
+    <View
+      style={[
+        styles.bannerCard,
+        { backgroundColor: p.bg, borderColor: p.border, flexBasis: wide ? "31%" : "100%", flexGrow: wide ? 1 : 0 },
+      ]}
+    >
+      <MaterialCommunityIcons name={icon as any} size={20} color={p.fg} />
+      <Text style={[styles.bannerTitle, { color: p.strong }]} numberOfLines={2}>
+        {title}
+      </Text>
+      <Text style={[styles.bannerSub, { color: p.fg }]} numberOfLines={2}>
+        {sub}
+      </Text>
+      <Pressable testID={testID} onPress={onPress} style={[styles.bannerBtn, { backgroundColor: p.btnBg }]}>
+        <Text style={[styles.bannerBtnText, { color: p.btnFg }]}>{cta}</Text>
+        <MaterialCommunityIcons name="arrow-right" size={13} color={p.btnFg} />
+      </Pressable>
+    </View>
+  );
+}
+
+function DashCard({
+  title,
+  seeAllLabel,
+  onSeeAll,
+  extra,
+  children,
+}: {
+  title: string;
+  seeAllLabel?: string;
+  onSeeAll?: () => void;
+  extra?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.dashCard}>
+      <View style={styles.dashCardHead}>
+        <Text style={styles.dashCardTitle}>{title}</Text>
+        {extra}
+        {onSeeAll && (
+          <Pressable onPress={onSeeAll} hitSlop={6}>
+            <Text style={styles.dashCardSeeAll}>{seeAllLabel} →</Text>
+          </Pressable>
+        )}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function ListRow({
+  category,
+  name,
+  metaText,
+  rightBadgeText,
+  rightBadgeTone,
+  rightText,
+  onPress,
+}: {
+  category: string;
+  name: string;
+  metaText: string;
+  rightBadgeText?: string;
+  rightBadgeTone?: { bg: string; fg: string };
+  rightText?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.listRow, pressed && { opacity: 0.9 }]}>
+      <CategoryLogo category={category} size={38} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.listRowName} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={styles.listRowMeta} numberOfLines={1}>
+          {metaText}
+        </Text>
+      </View>
+      {rightBadgeText && rightBadgeTone && (
+        <View style={[styles.listRowBadge, { backgroundColor: rightBadgeTone.bg }]}>
+          <Text style={[styles.listRowBadgeText, { color: rightBadgeTone.fg }]} numberOfLines={1}>
+            {rightBadgeText}
+          </Text>
+        </View>
+      )}
+      {rightText && (
+        <Text style={styles.listRowRightText} numberOfLines={1}>
+          {rightText}
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
+function RecommendCard({
+  promo,
+  ctaLabel,
+  onJoin,
+  onRemind,
+}: {
+  promo: PromoItem;
+  ctaLabel: string;
+  onJoin: () => void;
+  onRemind: () => void;
+}) {
+  return (
+    <View style={styles.recommendCard}>
+      <View style={styles.recommendIconWrap}>
+        <MaterialCommunityIcons name="tag-heart-outline" size={20} color={colors.brand} />
+      </View>
+      <Text style={styles.recommendTitle} numberOfLines={2}>
+        {promo.title}
+      </Text>
+      {!!promo.app_name && (
+        <Text style={styles.recommendApp} numberOfLines={1}>
+          {promo.app_name}
+        </Text>
+      )}
+      <Text style={styles.recommendDesc} numberOfLines={3}>
+        {promo.description}
+      </Text>
+      <View style={styles.recommendActions}>
+        {!!promo.has_link && (
+          <Pressable testID={`recommend-join-${promo.id}`} style={styles.recommendCta} onPress={onJoin}>
+            <Text style={styles.recommendCtaText}>{ctaLabel}</Text>
+          </Pressable>
+        )}
+        <Pressable
+          testID={`recommend-remind-${promo.id}`}
+          style={styles.recommendRemindBtn}
+          onPress={onRemind}
+          hitSlop={6}
+        >
+          <MaterialCommunityIcons name="bell-outline" size={16} color={colors.brand} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
@@ -78,13 +347,18 @@ export default function Dashboard() {
   const router = useRouter();
   const { user } = useAuth();
   const { showUpgrade } = useUpgrade();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const toast = useToast();
+  const { width } = useWindowDimensions();
+  const isWide = width >= sidebarBreakpoint;
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [promoOpen, setPromoOpen] = useState(false);
+  const [lastMonthTotal, setLastMonthTotal] = useState<number | null>(null);
+  const [recentSubs, setRecentSubs] = useState<SubWithMeta[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
   const [promos, setPromos] = useState<PromoItem[] | null>(null);
   const [promoLoading, setPromoLoading] = useState(false);
 
@@ -135,9 +409,6 @@ export default function Dashboard() {
       count: data?.active_count || 0,
     });
     if (Platform.OS === "web") {
-      // react-native-web's Share.share() throws when navigator.share isn't
-      // available (most desktop browsers) instead of falling back — copy
-      // to clipboard instead of failing with no feedback at all.
       const nav: any = typeof navigator !== "undefined" ? navigator : null;
       if (nav?.share) {
         try {
@@ -161,32 +432,54 @@ export default function Dashboard() {
     } catch {}
   };
 
-  const togglePromo = async () => {
-    const next = !promoOpen;
-    setPromoOpen(next);
-    if (next && promos === null) {
-      setPromoLoading(true);
-      try {
-        const res: any = await api.promos();
-        setPromos(res.promos || []);
-      } catch {
-        setPromos([]);
-      } finally {
-        setPromoLoading(false);
-      }
+  const loadPromos = useCallback(async (plan?: string) => {
+    if (plan !== "premium") return;
+    setPromoLoading(true);
+    try {
+      const res: any = await api.promos();
+      setPromos(res.promos || []);
+    } catch {
+      setPromos([]);
+    } finally {
+      setPromoLoading(false);
     }
-  };
+  }, []);
 
   const load = useCallback(async () => {
     try {
       const res: any = await api.dashboard();
       setData(res);
+      loadPromos(res?.plan);
+
+      // "vs last month" — real tracked history, not a guess (see /analytics/spending).
+      api
+        .spendingHistory("monthly")
+        .then((h: any) => {
+          const points = h?.points || [];
+          if (points.length >= 2) {
+            setLastMonthTotal(points[points.length - 2].total);
+          } else {
+            setLastMonthTotal(null);
+          }
+        })
+        .catch(() => setLastMonthTotal(null));
+
+      // "Recently added" — the API already returns created_at per subscription,
+      // it's just not surfaced by the plain upcoming/most-expensive lists.
+      api
+        .listSubs()
+        .then((res: any) => {
+          const list: SubWithMeta[] = res?.subscriptions || [];
+          const sorted = [...list].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+          setRecentSubs(sorted.slice(0, 4));
+        })
+        .catch(() => setRecentSubs([]));
     } catch {
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [loadPromos]);
 
   useFocusEffect(
     useCallback(() => {
@@ -208,7 +501,47 @@ export default function Dashboard() {
   };
 
   const firstName = (user?.name || "").split(" ")[0] || t("dashboard.you");
-  const maxCat = data?.by_category?.[0]?.total || 1;
+  const initials = (user?.name || "U")
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  const savingsFromTrials = useMemo(
+    () => (data?.ending_trials || []).reduce((sum, tr) => sum + (tr.monthly_cost || 0), 0),
+    [data?.ending_trials],
+  );
+
+  const categorySlices: DonutSlice[] = useMemo(
+    () =>
+      (data?.by_category || []).map((c) => {
+        const cat = getCategory(c.category);
+        return { key: c.category, label: t(`categories.${cat.key}`), value: c.total, color: cat.color };
+      }),
+    [data?.by_category, t],
+  );
+  const categoryGrandTotal = categorySlices.reduce((sum, s) => sum + s.value, 0) || 1;
+
+  const filteredUpcoming = useMemo(() => {
+    const list = data?.upcoming || [];
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.trim().toLowerCase();
+    return list.filter((s) => s.name.toLowerCase().includes(q));
+  }, [data?.upcoming, searchQuery]);
+
+  const filteredRecent = useMemo(() => {
+    if (!searchQuery.trim()) return recentSubs;
+    const q = searchQuery.trim().toLowerCase();
+    return recentSubs.filter((s) => s.name.toLowerCase().includes(q));
+  }, [recentSubs, searchQuery]);
+
+  const todayLong = new Date().toLocaleDateString(locale, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
   if (loading) {
     return (
@@ -219,436 +552,437 @@ export default function Dashboard() {
   }
 
   const isEmpty = !data || data.active_count === 0;
-
-  const monthlyLimit = user?.monthly_limit || null;
-  const limitPct = monthlyLimit ? Math.round(((data?.total_this_month || 0) / monthlyLimit) * 100) : null;
-  const limitStatus: "safe" | "warning" | "over" | null =
-    limitPct === null ? null : limitPct >= 100 ? "over" : limitPct >= 85 ? "warning" : "safe";
-  const totalCardColors: [string, string] =
-    limitStatus === "over"
-      ? ["#EF4444", "#B91C1C"]
-      : limitStatus === "warning"
-        ? ["#F59E0B", "#B45309"]
-        : [colors.brand, colors.brandDark];
+  const contentMaxWidth = isWide ? WIDE_CONTENT_MAX : MOBILE_CONTENT_MAX;
 
   return (
     <>
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={{ paddingTop: insets.top + spacing.md, paddingBottom: tabH + spacing.xl }}
-      showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.greeting}>{greeting()},</Text>
-          <Text style={styles.userName}>{firstName} 👋</Text>
-        </View>
-        {data?.plan === "premium" ? (
-          <View style={styles.premiumPill}>
-            <MaterialCommunityIcons name="crown" size={14} color="#B45309" />
-            <Text style={styles.premiumPillText}>{t("dashboard.premium")}</Text>
-          </View>
-        ) : (
-          <View style={styles.freePill}>
-            <Text style={styles.freePillText}>
-              {data?.active_count}/{data?.free_limit}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Total spend card */}
-      <View style={styles.section}>
-        <Pressable
-          testID="total-spend-card"
-          onPress={() => router.push("/spending-history")}
-          style={({ pressed }) => pressed && { opacity: 0.92 }}
-        >
-        <LinearGradient
-          colors={totalCardColors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.totalCard}
-        >
-          <View style={styles.totalTopRow}>
-            <Text style={styles.totalLabel}>{t("dashboard.totalLabel")}</Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-              <Pressable
-                testID="share-spending-button"
-                hitSlop={8}
-                onPress={(e: any) => {
-                  e.stopPropagation?.();
-                  shareSpending();
-                }}
-              >
-                <MaterialCommunityIcons name="share-variant" size={19} color="rgba(255,255,255,0.85)" />
-              </Pressable>
-              <MaterialCommunityIcons name="wallet" size={20} color="rgba(255,255,255,0.85)" />
-            </View>
-          </View>
-          <Text style={styles.totalValue}>{formatRupiah(data?.total_this_month || 0)}</Text>
-          <View style={styles.projRow}>
-            <MaterialCommunityIcons name="chart-line" size={15} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.projText}>
-              {t("dashboard.projection", { value: formatRupiah(data?.projection_next_month || 0) })}
-            </Text>
-          </View>
-          {limitPct !== null && (
-            <View testID="limit-progress-row" style={styles.projRow}>
-              <MaterialCommunityIcons
-                name={
-                  limitStatus === "over"
-                    ? "alert-octagon"
-                    : limitStatus === "warning"
-                      ? "alert"
-                      : "shield-check"
-                }
-                size={15}
-                color="rgba(255,255,255,0.85)"
-              />
-              <Text style={styles.projText}>
-                {t("dashboard.limitProgress", { pct: limitPct, limit: formatRupiah(monthlyLimit || 0) })}
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={{ paddingTop: insets.top + spacing.md, paddingBottom: tabH + spacing.xl }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
+      >
+        <View style={[styles.page, { maxWidth: contentMaxWidth }]}>
+          {/* Header row */}
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.greetingText}>
+                {greeting()}, {firstName} 👋
               </Text>
+              <Text style={styles.greetingSub}>{t("dashboard.greetingSubtitle")}</Text>
             </View>
-          )}
-          <View style={styles.chartHintRow}>
-            <MaterialCommunityIcons name="chart-bar" size={13} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.chartHintText}>{t("dashboard.viewChart")}</Text>
-            <MaterialCommunityIcons name="chevron-right" size={15} color="rgba(255,255,255,0.85)" />
-          </View>
-        </LinearGradient>
-        </Pressable>
-      </View>
 
-      {/* Promo recommendations — Premium-only, admin-curated */}
-      <View style={styles.section}>
-        {data?.plan === "premium" ? (
-          <View style={styles.promoCard}>
-            <Pressable testID="promo-card-toggle" onPress={togglePromo} style={styles.promoHeaderRow}>
-              <View style={styles.promoIconWrap}>
-                <MaterialCommunityIcons name="gift-outline" size={18} color="#92400E" />
+            {isWide && (
+              <View style={styles.searchBox} testID="dashboard-search">
+                <MaterialCommunityIcons name="magnify" size={18} color={colors.muted} />
+                <TextInput
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder={t("dashboard.searchPlaceholder")}
+                  placeholderTextColor={colors.muted}
+                  style={styles.searchInput}
+                />
               </View>
-              <Text style={styles.promoTitle}>{t("dashboard.promoCardTitle")}</Text>
-              <MaterialCommunityIcons
-                name={promoOpen ? "chevron-up" : "chevron-down"}
-                size={20}
-                color="#92400E"
-              />
-            </Pressable>
-            {promoOpen && (
-              <View style={styles.promoBody}>
-                {promoLoading ? (
-                  <ActivityIndicator color="#B45309" style={{ marginVertical: spacing.lg }} />
-                ) : promos && promos.length > 0 ? (
-                  promos.map((p) => (
-                    <View key={p.id} style={styles.promoItem}>
-                      <View style={styles.promoItemTitleRow}>
-                        <Text style={styles.promoItemTitle}>
-                          {p.title}
-                          {p.app_name ? ` · ${p.app_name}` : ""}
-                        </Text>
-                        <View style={styles.promoSponsoredBadge}>
-                          <Text style={styles.promoSponsoredBadgeText}>{t("dashboard.promoLabel")}</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.promoItemDesc}>{p.description}</Text>
-                      <View style={styles.promoActionRow}>
-                        {!!p.has_link && (
-                          <Pressable
-                            testID={`promo-join-${p.id}`}
-                            style={styles.promoJoinBtn}
-                            onPress={() => openPromo(p.id)}
-                          >
-                            <MaterialCommunityIcons name="open-in-new" size={14} color="#fff" />
-                            <Text style={styles.promoJoinBtnText}>{t("dashboard.promoJoinAction")}</Text>
-                          </Pressable>
-                        )}
-                        <Pressable
-                          testID={`promo-remind-${p.id}`}
-                          style={styles.promoRemindBtn}
-                          onPress={() => setRemindPromoId(p.id)}
-                        >
-                          <MaterialCommunityIcons name="bell-outline" size={14} color="#B45309" />
-                          <Text style={styles.promoRemindBtnText}>{t("dashboard.promoRemindAction")}</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  ))
+            )}
+
+            <View style={styles.headerRight}>
+              <Pressable testID="dashboard-bell" onPress={() => router.push("/account")} style={styles.iconBtn} hitSlop={8}>
+                <MaterialCommunityIcons name="bell-outline" size={20} color={colors.onSurface} />
+              </Pressable>
+              <Pressable testID="dashboard-avatar" onPress={() => router.push("/account")} style={styles.avatarBtn}>
+                {user?.picture ? (
+                  <Image source={{ uri: user.picture }} style={styles.avatarImg} contentFit="cover" />
                 ) : (
-                  <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
-                    <Text style={styles.promoEmptyTitle}>{t("dashboard.promoEmptyTitle")}</Text>
-                    <Text style={styles.promoEmptySub}>{t("dashboard.promoEmptySubtitle")}</Text>
+                  <View style={styles.avatarFallback}>
+                    <Text style={styles.avatarFallbackText}>{initials}</Text>
                   </View>
                 )}
-              </View>
-            )}
-          </View>
-        ) : (
-          <Pressable testID="promo-card-locked" onPress={showUpgrade} style={styles.promoLockedCard}>
-            <View style={styles.promoLockIconWrap}>
-              <MaterialCommunityIcons name="lock" size={18} color="#6B7280" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.promoLockedTitle}>{t("dashboard.promoCardTitle")}</Text>
-              <Text style={styles.promoLockedSub}>{t("dashboard.promoCardLockedSub")}</Text>
-            </View>
-            <View style={styles.promoUnlockPill}>
-              <MaterialCommunityIcons name="crown" size={11} color="#B45309" />
-              <Text style={styles.promoUnlockPillText}>{t("dashboard.promoCardUnlock")}</Text>
-            </View>
-          </Pressable>
-        )}
-      </View>
-
-      {isEmpty ? (
-        <View style={{ marginTop: spacing.lg }}>
-          <EmptyState
-            icon="rocket-launch"
-            title={t("dashboard.emptyTitle")}
-            subtitle={t("dashboard.emptySubtitle")}
-            cta={
-              <Button
-                testID="empty-add-button"
-                title={t("dashboard.addButton")}
-                icon="plus"
-                onPress={() => router.push("/subscription/form")}
-              />
-            }
-          />
-        </View>
-      ) : (
-        <>
-          {/* Ringkasan boros */}
-          {(data?.most_expensive || (data?.ending_trials && data.ending_trials.length > 0)) && (
-            <View style={styles.section}>
-              <SectionTitle title={t("dashboard.highlightSection")} />
-              <View style={{ gap: spacing.md }}>
-                {data?.most_expensive && (
-                  <Pressable
-                    testID="most-expensive-card"
-                    onPress={() =>
-                      router.push({
-                        pathname: "/subscription/form",
-                        params: { id: data.most_expensive!.id },
-                      })
-                    }
-                    style={({ pressed }) => [styles.borosCard, pressed && { opacity: 0.9 }]}
-                  >
-                    <CategoryLogo category={data.most_expensive.category} size={44} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.borosLabel}>{t("dashboard.mostExpensiveLabel")}</Text>
-                      <Text style={styles.borosName} numberOfLines={1}>
-                        {data.most_expensive.name}
-                        {data.most_expensive.registered_with
-                          ? ` (${data.most_expensive.registered_with})`
-                          : ""}
-                      </Text>
-                      <Text style={styles.borosMeta}>
-                        {t("dashboard.mostExpensiveMeta", {
-                          price: formatRupiah(data.most_expensive.monthly_cost),
-                          pct: Math.round(
-                            (data.most_expensive.monthly_cost / (data.total_this_month || 1)) * 100,
-                          ),
-                        })}
-                      </Text>
-                    </View>
-                    <MaterialCommunityIcons name="chevron-right" size={20} color={colors.borderStrong} />
-                  </Pressable>
-                )}
-                {data?.ending_trials?.map((tr) => (
-                  <Pressable
-                    key={tr.id}
-                    testID={`trial-warning-${tr.id}`}
-                    onPress={() =>
-                      router.push({ pathname: "/subscription/form", params: { id: tr.id } })
-                    }
-                    style={({ pressed }) => [styles.trialWarnCard, pressed && { opacity: 0.9 }]}
-                  >
-                    <MaterialCommunityIcons name="timer-sand" size={22} color="#B45309" />
-                    <Text style={styles.trialWarnText} numberOfLines={2}>
-                      {t("dashboard.trialWarning", {
-                        name: tr.registered_with ? `${tr.name} (${tr.registered_with})` : tr.name,
-                        ending:
-                          tr.days_left === 0
-                            ? t("dashboard.trialEndsToday")
-                            : tr.days_left === 1
-                              ? t("dashboard.trialEndsTomorrow")
-                              : t("dashboard.trialEndsIn", { days: tr.days_left ?? 0 }),
-                      })}
-                    </Text>
-                    <MaterialCommunityIcons name="chevron-right" size={20} color="#B45309" />
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Upcoming */}
-          <View style={styles.section}>
-            <SectionTitle title={t("dashboard.upcomingSection")} />
-            {data && data.upcoming.length > 0 ? (
-              <View style={{ gap: spacing.md }}>
-                {data.upcoming.map((s) => (
-                  <SubscriptionCard
-                    key={s.id}
-                    sub={s}
-                    onPress={() => router.push({ pathname: "/subscription/form", params: { id: s.id } })}
-                  />
-                ))}
-              </View>
-            ) : (
-              <View style={styles.calmCard}>
-                <MaterialCommunityIcons name="check-circle" size={22} color={colors.success} />
-                <Text style={styles.calmText}>{t("dashboard.calmText")}</Text>
-              </View>
-            )}
-          </View>
-
-          {/* By category */}
-          {data && data.by_category.length > 0 && (
-            <View style={styles.section}>
-              <SectionTitle title={t("dashboard.categorySection")} />
-              <View style={styles.chartCard}>
-                {data.by_category.map((c) => {
-                  const cat = getCategory(c.category);
-                  const pct = Math.max(0.06, c.total / maxCat);
-                  return (
-                    <View key={c.category} style={styles.chartRow}>
-                      <View style={styles.chartHead}>
-                        <View style={[styles.catDot, { backgroundColor: cat.color }]}>
-                          <MaterialCommunityIcons name={cat.icon as any} size={13} color="#fff" />
-                        </View>
-                        <Text style={styles.chartLabel}>{t(`categories.${cat.key}`)}</Text>
-                        <Text style={styles.chartValue}>{formatRupiah(c.total)}</Text>
-                      </View>
-                      <View style={styles.track}>
-                        <View
-                          style={[styles.fill, { width: `${pct * 100}%`, backgroundColor: cat.color }]}
-                        />
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          )}
-        </>
-      )}
-    </ScrollView>
-
-    {/* Promo reminder time picker */}
-    <Modal
-      visible={!!remindPromoId}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setRemindPromoId(null)}
-    >
-      <Pressable style={styles.backdrop} onPress={() => setRemindPromoId(null)}>
-        <Pressable style={styles.modalCard} onPress={() => {}}>
-          <Text style={styles.modalTitle}>{t("dashboard.promoRemindTitle")}</Text>
-          <Text style={styles.modalSub}>{t("dashboard.promoRemindSub")}</Text>
-
-          <Pressable testID="remind-1h" style={styles.remindOption} onPress={() => remindInHours(1)}>
-            <MaterialCommunityIcons name="clock-outline" size={18} color={colors.brand} />
-            <Text style={styles.remindOptionText}>{t("dashboard.promoRemind1h")}</Text>
-          </Pressable>
-          <Pressable testID="remind-3h" style={styles.remindOption} onPress={() => remindInHours(3)}>
-            <MaterialCommunityIcons name="clock-outline" size={18} color={colors.brand} />
-            <Text style={styles.remindOptionText}>{t("dashboard.promoRemind3h")}</Text>
-          </Pressable>
-          <Pressable testID="remind-6h" style={styles.remindOption} onPress={() => remindInHours(6)}>
-            <MaterialCommunityIcons name="clock-outline" size={18} color={colors.brand} />
-            <Text style={styles.remindOptionText}>{t("dashboard.promoRemind6h")}</Text>
-          </Pressable>
-          <Pressable
-            testID="remind-tomorrow-morning"
-            style={styles.remindOption}
-            onPress={() => remindTomorrowAt(8)}
-          >
-            <MaterialCommunityIcons name="weather-sunset-up" size={18} color={colors.brand} />
-            <Text style={styles.remindOptionText}>{t("dashboard.promoRemindTomorrowMorning")}</Text>
-          </Pressable>
-          <Pressable
-            testID="remind-tomorrow-night"
-            style={styles.remindOption}
-            onPress={() => remindTomorrowAt(20)}
-          >
-            <MaterialCommunityIcons name="weather-night" size={18} color={colors.brand} />
-            <Text style={styles.remindOptionText}>{t("dashboard.promoRemindTomorrowNight")}</Text>
-          </Pressable>
-
-          {Platform.OS === "web" ? (
-            <View style={styles.remindCustomWebRow}>
-              <MaterialCommunityIcons name="calendar-clock" size={18} color={colors.brand} />
-              {/* Real HTML datetime input (not RN's TextInput) — same reason
-                  as the due-date picker in subscription/form.tsx. */}
-              <input
-                data-testid="remind-custom-input"
-                type="datetime-local"
-                value={remindCustomValue}
-                min={toLocalDateTimeInput(new Date())}
-                onChange={(e) => setRemindCustomValue(e.target.value)}
-                style={webDateTimeInputStyle}
-              />
-              <Pressable
-                testID="remind-custom-go"
-                style={styles.remindCustomGo}
-                onPress={remindCustomWeb}
-              >
-                <MaterialCommunityIcons name="check" size={18} color="#fff" />
               </Pressable>
             </View>
-          ) : (
-            <Pressable
-              testID="remind-custom"
-              style={styles.remindOption}
-              onPress={() => {
-                setRemindNativeDate(new Date());
-                setRemindNativeStep("date");
-              }}
-            >
-              <MaterialCommunityIcons name="calendar-clock" size={18} color={colors.brand} />
-              <Text style={styles.remindOptionText}>{t("dashboard.promoRemindCustom")}</Text>
-            </Pressable>
+          </View>
+
+          {isWide && (
+            <View style={styles.dateRow}>
+              <Text style={styles.dateText}>{todayLong}</Text>
+              <Pressable
+                testID="dashboard-add-sub"
+                style={styles.addBtn}
+                onPress={() => router.push("/subscription/form")}
+              >
+                <MaterialCommunityIcons name="plus" size={16} color="#fff" />
+                <Text style={styles.addBtnText}>{t("dashboard.addButton")}</Text>
+              </Pressable>
+            </View>
           )}
 
-          <Pressable style={styles.cancelBtn} onPress={() => setRemindPromoId(null)}>
-            <Text style={styles.cancelText}>{t("common.cancel")}</Text>
+          {isEmpty ? (
+            <View style={{ marginTop: spacing.lg }}>
+              <EmptyState
+                icon="rocket-launch"
+                title={t("dashboard.emptyTitle")}
+                subtitle={t("dashboard.emptySubtitle")}
+                cta={
+                  <Button
+                    testID="empty-add-button"
+                    title={t("dashboard.addButton")}
+                    icon="plus"
+                    onPress={() => router.push("/subscription/form")}
+                  />
+                }
+              />
+            </View>
+          ) : (
+            <>
+              {/* Stat cards */}
+              <View style={styles.statsRow}>
+                <StatCard
+                  icon="wallet-outline"
+                  label={t("dashboard.totalLabel")}
+                  value={formatRupiah(data?.total_this_month || 0)}
+                  sub={
+                    lastMonthTotal === null
+                      ? undefined
+                      : data!.total_this_month === lastMonthTotal
+                        ? t("dashboard.statTotalDeltaFlat")
+                        : data!.total_this_month > lastMonthTotal
+                          ? t("dashboard.statTotalDeltaUp", {
+                              value: formatRupiah(data!.total_this_month - lastMonthTotal),
+                            })
+                          : t("dashboard.statTotalDeltaDown", {
+                              value: formatRupiah(lastMonthTotal - data!.total_this_month),
+                            })
+                  }
+                  tint={colors.brand}
+                  wide={isWide}
+                  onPress={() => router.push("/spending-history")}
+                />
+                <StatCard
+                  icon="calendar-clock-outline"
+                  label={t("dashboard.statUpcomingLabel")}
+                  value={t("dashboard.statUpcomingValue", { count: data?.upcoming.length || 0 })}
+                  sub={t("dashboard.statUpcomingSub")}
+                  tint="#0EA5E9"
+                  wide={isWide}
+                  onPress={() => router.push("/subscriptions")}
+                />
+                <StatCard
+                  icon="leaf-circle-outline"
+                  label={t("dashboard.statSavingsLabel")}
+                  value={formatRupiah(savingsFromTrials)}
+                  sub={savingsFromTrials > 0 ? t("dashboard.statSavingsSub") : t("dashboard.statSavingsSubEmpty")}
+                  tint={colors.brandDark}
+                  wide={isWide}
+                />
+                <StatCard
+                  icon="view-grid-outline"
+                  label={t("dashboard.statActiveLabel")}
+                  value={String(data?.active_count || 0)}
+                  sub={t("dashboard.statActiveSub", { count: data?.by_category.length || 0 })}
+                  tint="#8B5CF6"
+                  wide={isWide}
+                  onPress={() => router.push("/subscriptions")}
+                />
+              </View>
+
+              {/* Banners */}
+              <View style={styles.bannersRow}>
+                {!!data?.ending_trials?.length && (
+                  <BannerCard
+                    testID="banner-trials"
+                    tone="danger"
+                    icon="alert-circle-outline"
+                    title={t("dashboard.bannerTrialTitle", { count: data.ending_trials.length })}
+                    sub={t("dashboard.bannerTrialSub", { amount: formatRupiah(savingsFromTrials) })}
+                    cta={t("dashboard.bannerTrialCta")}
+                    wide={isWide}
+                    onPress={() => router.push("/subscriptions")}
+                  />
+                )}
+                <BannerCard
+                  testID="banner-group"
+                  tone="brand"
+                  icon="account-group-outline"
+                  title={t("dashboard.bannerGroupTitle")}
+                  sub={t("dashboard.bannerGroupSub")}
+                  cta={t("dashboard.bannerGroupCta")}
+                  wide={isWide}
+                  onPress={() => router.push("/groups")}
+                />
+                {data?.plan !== "premium" && (
+                  <BannerCard
+                    testID="banner-upgrade"
+                    tone="amber"
+                    icon="crown-outline"
+                    title={t("dashboard.bannerUpgradeTitle")}
+                    sub={t("dashboard.bannerUpgradeSub")}
+                    cta={t("dashboard.bannerUpgradeCta")}
+                    wide={isWide}
+                    onPress={showUpgrade}
+                  />
+                )}
+              </View>
+
+              {/* 3-up grid */}
+              <View style={[styles.gridRow, !isWide && styles.gridRowStack]}>
+                <View style={styles.gridCol}>
+                  <DashCard
+                    title={t("dashboard.billsCardTitle")}
+                    seeAllLabel={t("dashboard.seeAll")}
+                    onSeeAll={() => router.push("/subscriptions")}
+                  >
+                    {filteredUpcoming.length > 0 ? (
+                      <View style={{ gap: spacing.sm }}>
+                        {filteredUpcoming.slice(0, 5).map((s) => {
+                          const days = s.days_left ?? 0;
+                          const tone = dueTone(days);
+                          return (
+                            <ListRow
+                              key={s.id}
+                              category={s.category}
+                              name={s.name}
+                              metaText={`${formatRupiah(s.price)} · ${t(`categories.${getCategory(s.category).key}`)}`}
+                              rightBadgeText={dueLabelText(days, t)}
+                              rightBadgeTone={tone}
+                              onPress={() => router.push({ pathname: "/subscription/form", params: { id: s.id } })}
+                            />
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      <Text style={styles.emptyRowText}>{t("dashboard.billsEmptyShort")}</Text>
+                    )}
+                  </DashCard>
+                </View>
+
+                <View style={styles.gridCol}>
+                  <DashCard
+                    title={t("dashboard.categoryCardTitle")}
+                    extra={
+                      <View style={styles.periodPill}>
+                        <Text style={styles.periodPillText}>{t("dashboard.categoryPeriodLabel")}</Text>
+                      </View>
+                    }
+                  >
+                    {categorySlices.length > 0 ? (
+                      <View style={{ alignItems: "center", gap: spacing.lg }}>
+                        <DonutChart
+                          slices={categorySlices}
+                          centerValue={formatRupiah(categoryGrandTotal)}
+                          centerLabel={t("dashboard.categoryTotalLabel")}
+                        />
+                        <View style={{ alignSelf: "stretch", gap: spacing.sm }}>
+                          {categorySlices.map((s) => (
+                            <View key={s.key} style={styles.legendRow}>
+                              <View style={[styles.legendDot, { backgroundColor: s.color }]} />
+                              <Text style={styles.legendLabel} numberOfLines={1}>
+                                {s.label}
+                              </Text>
+                              <Text style={styles.legendPct}>
+                                {Math.round((s.value / categoryGrandTotal) * 100)}%
+                              </Text>
+                              <Text style={styles.legendValue}>{formatRupiah(s.value)}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={styles.emptyRowText}>{t("dashboard.categoryEmpty")}</Text>
+                    )}
+                  </DashCard>
+                </View>
+
+                <View style={styles.gridCol}>
+                  <DashCard
+                    title={t("dashboard.recentCardTitle")}
+                    seeAllLabel={t("dashboard.seeAll")}
+                    onSeeAll={() => router.push("/subscriptions")}
+                  >
+                    {filteredRecent.length > 0 ? (
+                      <View style={{ gap: spacing.sm }}>
+                        {filteredRecent.map((s) => (
+                          <ListRow
+                            key={s.id}
+                            category={s.category}
+                            name={s.name}
+                            metaText={`${formatRupiah(s.price)} · ${t(`cycles.${s.billing_cycle}`)}`}
+                            rightText={addedLabelText(s.created_at, t)}
+                            onPress={() => router.push({ pathname: "/subscription/form", params: { id: s.id } })}
+                          />
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={styles.emptyRowText}>{t("dashboard.recentEmpty")}</Text>
+                    )}
+                  </DashCard>
+                </View>
+              </View>
+
+              {/* Recommendations */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>{t("dashboard.recommendSectionTitle")}</Text>
+                <Text style={styles.sectionSub}>{t("dashboard.recommendSectionSub")}</Text>
+
+                {data?.plan === "premium" ? (
+                  promoLoading ? (
+                    <ActivityIndicator color={colors.brand} style={{ marginTop: spacing.lg }} />
+                  ) : promos && promos.length > 0 ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.md }}
+                    >
+                      {promos.map((p) => (
+                        <RecommendCard
+                          key={p.id}
+                          promo={p}
+                          ctaLabel={t("dashboard.recommendCta")}
+                          onJoin={() => openPromo(p.id)}
+                          onRemind={() => setRemindPromoId(p.id)}
+                        />
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <View style={styles.promoEmptyCard}>
+                      <Text style={styles.promoEmptyTitle}>{t("dashboard.promoEmptyTitle")}</Text>
+                      <Text style={styles.promoEmptySub}>{t("dashboard.promoEmptySubtitle")}</Text>
+                    </View>
+                  )
+                ) : (
+                  <Pressable testID="recommend-locked" onPress={showUpgrade} style={styles.promoLockedCard}>
+                    <View style={styles.promoLockIconWrap}>
+                      <MaterialCommunityIcons name="lock" size={18} color="#6B7280" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.promoLockedTitle}>{t("dashboard.recommendLockedTitle")}</Text>
+                      <Text style={styles.promoLockedSub}>{t("dashboard.promoCardLockedSub")}</Text>
+                    </View>
+                    <View style={styles.promoUnlockPill}>
+                      <MaterialCommunityIcons name="crown" size={11} color="#B45309" />
+                      <Text style={styles.promoUnlockPillText}>{t("dashboard.promoCardUnlock")}</Text>
+                    </View>
+                  </Pressable>
+                )}
+              </View>
+
+              <View style={{ height: spacing.md }} />
+              <Pressable testID="share-spending-inline" onPress={shareSpending} style={styles.shareRow}>
+                <MaterialCommunityIcons name="share-variant" size={15} color={colors.muted} />
+                <Text style={styles.shareRowText}>{t("dashboard.shareCta")}</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      </ScrollView>
+
+      {/* Promo reminder time picker */}
+      <Modal
+        visible={!!remindPromoId}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRemindPromoId(null)}
+      >
+        <Pressable style={styles.backdrop} onPress={() => setRemindPromoId(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>{t("dashboard.promoRemindTitle")}</Text>
+            <Text style={styles.modalSub}>{t("dashboard.promoRemindSub")}</Text>
+
+            <Pressable testID="remind-1h" style={styles.remindOption} onPress={() => remindInHours(1)}>
+              <MaterialCommunityIcons name="clock-outline" size={18} color={colors.brand} />
+              <Text style={styles.remindOptionText}>{t("dashboard.promoRemind1h")}</Text>
+            </Pressable>
+            <Pressable testID="remind-3h" style={styles.remindOption} onPress={() => remindInHours(3)}>
+              <MaterialCommunityIcons name="clock-outline" size={18} color={colors.brand} />
+              <Text style={styles.remindOptionText}>{t("dashboard.promoRemind3h")}</Text>
+            </Pressable>
+            <Pressable testID="remind-6h" style={styles.remindOption} onPress={() => remindInHours(6)}>
+              <MaterialCommunityIcons name="clock-outline" size={18} color={colors.brand} />
+              <Text style={styles.remindOptionText}>{t("dashboard.promoRemind6h")}</Text>
+            </Pressable>
+            <Pressable
+              testID="remind-tomorrow-morning"
+              style={styles.remindOption}
+              onPress={() => remindTomorrowAt(8)}
+            >
+              <MaterialCommunityIcons name="weather-sunset-up" size={18} color={colors.brand} />
+              <Text style={styles.remindOptionText}>{t("dashboard.promoRemindTomorrowMorning")}</Text>
+            </Pressable>
+            <Pressable
+              testID="remind-tomorrow-night"
+              style={styles.remindOption}
+              onPress={() => remindTomorrowAt(20)}
+            >
+              <MaterialCommunityIcons name="weather-night" size={18} color={colors.brand} />
+              <Text style={styles.remindOptionText}>{t("dashboard.promoRemindTomorrowNight")}</Text>
+            </Pressable>
+
+            {Platform.OS === "web" ? (
+              <View style={styles.remindCustomWebRow}>
+                <MaterialCommunityIcons name="calendar-clock" size={18} color={colors.brand} />
+                <input
+                  data-testid="remind-custom-input"
+                  type="datetime-local"
+                  value={remindCustomValue}
+                  min={toLocalDateTimeInput(new Date())}
+                  onChange={(e) => setRemindCustomValue(e.target.value)}
+                  style={webDateTimeInputStyle}
+                />
+                <Pressable
+                  testID="remind-custom-go"
+                  style={styles.remindCustomGo}
+                  onPress={remindCustomWeb}
+                >
+                  <MaterialCommunityIcons name="check" size={18} color="#fff" />
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                testID="remind-custom"
+                style={styles.remindOption}
+                onPress={() => {
+                  setRemindNativeDate(new Date());
+                  setRemindNativeStep("date");
+                }}
+              >
+                <MaterialCommunityIcons name="calendar-clock" size={18} color={colors.brand} />
+                <Text style={styles.remindOptionText}>{t("dashboard.promoRemindCustom")}</Text>
+              </Pressable>
+            )}
+
+            <Pressable style={styles.cancelBtn} onPress={() => setRemindPromoId(null)}>
+              <Text style={styles.cancelText}>{t("common.cancel")}</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
-      </Pressable>
-    </Modal>
+      </Modal>
 
-    {Platform.OS !== "web" && remindNativeStep === "date" && (
-      <DateTimePicker
-        value={remindNativeDate}
-        mode="date"
-        display={Platform.OS === "ios" ? "inline" : "default"}
-        minimumDate={new Date()}
-        onChange={(event, date) => {
-          setRemindNativeStep(null);
-          if (event.type === "dismissed" || !date) return;
-          setRemindNativeDate(date);
-          setRemindNativeStep("time");
-        }}
-      />
-    )}
-    {Platform.OS !== "web" && remindNativeStep === "time" && (
-      <DateTimePicker
-        value={remindNativeDate}
-        mode="time"
-        display={Platform.OS === "ios" ? "spinner" : "default"}
-        onChange={(event, time) => {
-          setRemindNativeStep(null);
-          if (event.type === "dismissed" || !time || !remindPromoId) return;
-          const combined = new Date(remindNativeDate);
-          combined.setHours(time.getHours(), time.getMinutes(), 0, 0);
-          scheduleRemind(remindPromoId, combined);
-        }}
-      />
-    )}
+      {Platform.OS !== "web" && remindNativeStep === "date" && (
+        <DateTimePicker
+          value={remindNativeDate}
+          mode="date"
+          display={Platform.OS === "ios" ? "inline" : "default"}
+          minimumDate={new Date()}
+          onChange={(event, date) => {
+            setRemindNativeStep(null);
+            if (event.type === "dismissed" || !date) return;
+            setRemindNativeDate(date);
+            setRemindNativeStep("time");
+          }}
+        />
+      )}
+      {Platform.OS !== "web" && remindNativeStep === "time" && (
+        <DateTimePicker
+          value={remindNativeDate}
+          mode="time"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={(event, time) => {
+            setRemindNativeStep(null);
+            if (event.type === "dismissed" || !time || !remindPromoId) return;
+            const combined = new Date(remindNativeDate);
+            combined.setHours(time.getHours(), time.getMinutes(), 0, 0);
+            scheduleRemind(remindPromoId, combined);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -656,170 +990,202 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
   center: { flex: 1, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  header: {
+  page: { width: "100%", alignSelf: "center", paddingHorizontal: spacing.xl },
+
+  headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg, marginBottom: spacing.md },
+  greetingText: { fontFamily: font.extrabold, fontSize: fontSize["2xl"], color: colors.onSurface },
+  greetingSub: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted, marginTop: 2 },
+
+  searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
+    flex: 1,
+    maxWidth: 380,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    height: 42,
+  },
+  searchInput: { flex: 1, fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface, outlineWidth: 0 } as any,
+
+  headerRight: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarBtn: { width: 38, height: 38 },
+  avatarImg: { width: 38, height: 38, borderRadius: radius.pill },
+  avatarFallback: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brandSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarFallbackText: { fontFamily: font.extrabold, fontSize: fontSize.sm, color: colors.onBrandSecondary },
+
+  dateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: spacing.lg,
-    width: "100%",
-    maxWidth: webMaxWidth,
-    alignSelf: "center",
   },
-  greeting: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.muted },
-  userName: { fontFamily: font.extrabold, fontSize: fontSize["2xl"], color: colors.onSurface },
-  premiumPill: {
+  dateText: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted },
+  addBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: 6,
+    backgroundColor: colors.brand,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
     borderRadius: radius.pill,
+    ...shadow.soft,
   },
-  premiumPillText: { fontFamily: font.bold, fontSize: fontSize.sm, color: "#B45309" },
-  freePill: {
-    backgroundColor: colors.surfaceTertiary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-  },
-  freePillText: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.onSurfaceTertiary },
+  addBtnText: { fontFamily: font.bold, fontSize: fontSize.sm, color: "#fff" },
 
-  section: {
-    paddingHorizontal: spacing.xl,
-    marginTop: spacing.lg,
-    width: "100%",
-    maxWidth: webMaxWidth,
-    alignSelf: "center",
-  },
-  totalCard: { borderRadius: radius.lg, padding: spacing.xl, ...shadow.card },
-  totalTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  totalLabel: { fontFamily: font.semibold, fontSize: fontSize.base, color: "rgba(255,255,255,0.9)" },
-  totalValue: { fontFamily: font.extrabold, fontSize: 40, color: "#FFFFFF", marginTop: spacing.sm },
-  projRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.md },
-  projText: { fontFamily: font.medium, fontSize: fontSize.base, color: "rgba(255,255,255,0.9)" },
-  chartHintRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,0.25)",
-  },
-  chartHintText: { fontFamily: font.bold, fontSize: fontSize.sm, color: "rgba(255,255,255,0.95)" },
-
-  calmCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    backgroundColor: colors.brandTertiary,
+  statsRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.sm },
+  statCard: {
+    minWidth: 150,
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.lg,
     padding: spacing.lg,
+    ...shadow.soft,
   },
-  calmText: { flex: 1, fontFamily: font.medium, fontSize: fontSize.base, color: colors.onBrandTertiary },
+  statTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  statLabel: { flex: 1, fontFamily: font.semibold, fontSize: 12, color: colors.muted, marginRight: spacing.sm },
+  statIconWrap: { width: 26, height: 26, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },
+  statValue: { fontFamily: font.extrabold, fontSize: fontSize.xl, color: colors.onSurface, marginTop: spacing.sm },
+  statSub: { fontFamily: font.medium, fontSize: 11, color: colors.muted, marginTop: 3 },
 
-  borosCard: {
+  bannersRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.lg },
+  bannerCard: { borderRadius: radius.lg, borderWidth: 1, padding: spacing.lg, gap: 4 },
+  bannerTitle: { fontFamily: font.bold, fontSize: fontSize.base, marginTop: spacing.xs },
+  bannerSub: { fontFamily: font.regular, fontSize: fontSize.sm, lineHeight: 18 },
+  bannerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  bannerBtnText: { fontFamily: font.bold, fontSize: fontSize.sm },
+
+  gridRow: { flexDirection: "row", gap: spacing.lg, marginTop: spacing.xl, alignItems: "flex-start" },
+  gridRowStack: { flexDirection: "column" },
+  gridCol: { flex: 1, minWidth: 0, width: "100%" },
+
+  dashCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, ...shadow.soft },
+  dashCardHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  dashCardTitle: { flex: 1, fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface },
+  dashCardSeeAll: { fontFamily: font.semibold, fontSize: 12, color: colors.brand },
+  emptyRowText: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted, textAlign: "center", paddingVertical: spacing.lg },
+
+  periodPill: { backgroundColor: colors.surfaceTertiary, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
+  periodPillText: { fontFamily: font.semibold, fontSize: 11, color: colors.onSurfaceTertiary },
+
+  legendRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  legendDot: { width: 9, height: 9, borderRadius: 5 },
+  legendLabel: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurface },
+  legendPct: { fontFamily: font.medium, fontSize: 11, color: colors.muted, marginRight: spacing.sm },
+  legendValue: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.onSurface },
+
+  listRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  listRowName: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
+  listRowMeta: { fontFamily: font.medium, fontSize: 12, color: colors.muted, marginTop: 1 },
+  listRowBadge: { paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.pill },
+  listRowBadgeText: { fontFamily: font.bold, fontSize: 11 },
+  listRowRightText: { fontFamily: font.medium, fontSize: 11, color: colors.muted, maxWidth: 90, textAlign: "right" },
+
+  section: { marginTop: spacing.xl },
+  sectionTitle: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface },
+  sectionSub: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted, marginTop: 2 },
+
+  recommendCard: {
+    width: 220,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    ...shadow.soft,
+  },
+  recommendIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.md,
+    backgroundColor: colors.brandTertiary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.sm,
+  },
+  recommendTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
+  recommendApp: { fontFamily: font.medium, fontSize: 11, color: colors.muted, marginTop: 1 },
+  recommendDesc: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: spacing.sm, lineHeight: 17, minHeight: 51 },
+  recommendActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
+  recommendCta: {
+    flex: 1,
+    backgroundColor: colors.brand,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+  },
+  recommendCtaText: { fontFamily: font.bold, fontSize: 12, color: "#fff" },
+  recommendRemindBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brandTertiary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  promoEmptyCard: { alignItems: "center", paddingVertical: spacing.xl },
+  promoEmptyTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
+  promoEmptySub: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 2, textAlign: "center" },
+
+  promoLockedCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.lg,
     padding: spacing.lg,
+    marginTop: spacing.md,
     ...shadow.soft,
   },
-  borosLabel: { fontFamily: font.semibold, fontSize: 11, color: colors.muted },
-  borosName: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface, marginTop: 1 },
-  borosMeta: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.error, marginTop: 1 },
-  trialWarnCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    backgroundColor: "#FEF3C7",
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-  },
-  trialWarnText: { flex: 1, fontFamily: font.medium, fontSize: fontSize.base, color: "#92400E", lineHeight: 20 },
-
-  chartCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.lg, ...shadow.soft },
-  chartRow: { gap: spacing.sm },
-  chartHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  catDot: { width: 22, height: 22, borderRadius: 7, alignItems: "center", justifyContent: "center" },
-  chartLabel: { flex: 1, fontFamily: font.semibold, fontSize: fontSize.base, color: colors.onSurface },
-  chartValue: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
-  track: { height: 9, borderRadius: radius.pill, backgroundColor: colors.surfaceTertiary, overflow: "hidden" },
-  fill: { height: 9, borderRadius: radius.pill },
-
-  promoCard: {
-    backgroundColor: "#FEF3C7",
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: "#FDE68A",
-    overflow: "hidden",
-  },
-  promoHeaderRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg },
-  promoIconWrap: {
+  promoLockIconWrap: {
     width: 34,
     height: 34,
     borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.6)",
+    backgroundColor: colors.surfaceTertiary,
     alignItems: "center",
     justifyContent: "center",
   },
-  promoTitle: { flex: 1, fontFamily: font.bold, fontSize: fontSize.base, color: "#92400E" },
-  promoBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.md },
-  promoItem: {
-    backgroundColor: "rgba(255,255,255,0.55)",
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  promoItemTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  promoItemTitle: { flex: 1, fontFamily: font.bold, fontSize: fontSize.base, color: "#78350F" },
-  promoSponsoredBadge: {
-    backgroundColor: "rgba(146,64,14,0.12)",
+  promoLockedTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
+  promoLockedSub: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 2, lineHeight: 18 },
+  promoUnlockPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FEF3C7",
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    paddingVertical: 5,
     borderRadius: radius.pill,
   },
-  promoSponsoredBadgeText: {
-    fontFamily: font.bold,
-    fontSize: 10,
-    color: "#92400E",
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
-  },
-  promoItemDesc: { fontFamily: font.regular, fontSize: fontSize.sm, color: "#92400E", marginTop: 2, lineHeight: 19 },
-  promoEmptyTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: "#92400E" },
-  promoEmptySub: {
-    fontFamily: font.regular,
-    fontSize: fontSize.sm,
-    color: "#B45309",
-    marginTop: 2,
-    textAlign: "center",
-  },
-  promoActionRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
-  promoJoinBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#B45309",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-  },
-  promoJoinBtnText: { fontFamily: font.bold, fontSize: fontSize.sm, color: "#fff" },
-  promoRemindBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.7)",
-    borderWidth: 1,
-    borderColor: "#FDE68A",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-  },
-  promoRemindBtnText: { fontFamily: font.bold, fontSize: fontSize.sm, color: "#B45309" },
+  promoUnlockPillText: { fontFamily: font.bold, fontSize: 10, color: "#B45309" },
+
+  shareRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: spacing.md },
+  shareRowText: { fontFamily: font.semibold, fontSize: 12, color: colors.muted },
 
   backdrop: {
     flex: 1,
@@ -868,34 +1234,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  promoLockedCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    ...shadow.soft,
-  },
-  promoLockIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceTertiary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  promoLockedTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
-  promoLockedSub: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 2, lineHeight: 18 },
-  promoUnlockPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
-    borderRadius: radius.pill,
-  },
-  promoUnlockPillText: { fontFamily: font.bold, fontSize: 10, color: "#B45309" },
 });
