@@ -122,8 +122,13 @@ function Hero({ isWide, onSignup, onLogin, t }: any) {
 }
 
 // Two coupled mockups (browser + phone) so the hero shows both surfaces the
-// brief calls for, not just a bare stat card. Built from plain Views/Text —
-// no bitmap assets — so it stays crisp at any size and costs nothing to load.
+// brief calls for. These aren't generic illustrations — the layout mirrors
+// the real dashboard (sidebar + header + stat cards + bill list on PC; a
+// stacked header/stats/list on mobile), just scaled down, so the hero is a
+// preview of the actual product, not an arbitrary mockup. Plain Views/Text
+// only — no bitmap assets.
+const MOCK_NAV_ICONS = ["home", "credit-card-multiple", "account-group", "account"] as const;
+
 function HeroVisual({ isWide, t }: any) {
   const items = [
     { name: t("landing.mockItem1Name"), due: t("landing.mockItem1Due"), color: "#EF4444" },
@@ -147,10 +152,20 @@ function HeroVisual({ isWide, t }: any) {
     </View>
   );
 
+  const statTile = (label: string, value: string, key: string) => (
+    <View key={key} style={styles.mockStatTile}>
+      <Text style={styles.mockStatLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={styles.mockStatValue}>{value}</Text>
+    </View>
+  );
+
   return (
     <View style={styles.heroVisualStage}>
       {/* Laptop surface: dark bezel + hinge + keyboard deck, screen holds a
-          mac-style browser chrome with the actual page content inside. */}
+          mac-style browser chrome with a scaled replica of the real
+          sidebar + dashboard layout inside — not a generic mockup. */}
       <View style={styles.laptopShell}>
         <View style={styles.laptopCamera} />
         <View style={styles.browserFrame}>
@@ -165,20 +180,39 @@ function HeroVisual({ isWide, t }: any) {
               <Text style={styles.browserUrlText}>notifin.online</Text>
             </View>
           </View>
-          <View style={styles.browserBody}>
-            <Text style={styles.mockGreeting}>{t("landing.mockGreeting")}</Text>
-            <View style={styles.mockStatRow}>
-              <View style={styles.mockStatTile}>
-                <Text style={styles.mockStatLabel}>{t("landing.mockTotalLabel")}</Text>
-                <Text style={styles.mockStatValue}>Rp487.000</Text>
+          <View style={styles.appShellRow}>
+            <View style={styles.mockSidebar}>
+              <View style={styles.mockSidebarLogo}>
+                <MaterialCommunityIcons name="bell-ring" size={11} color={colors.onBrandPrimary} />
               </View>
-              <View style={styles.mockStatTile}>
-                <Text style={styles.mockStatLabel}>{t("landing.mockActiveLabel")}</Text>
-                <Text style={styles.mockStatValue}>8</Text>
-              </View>
+              {MOCK_NAV_ICONS.map((icon, i) => (
+                <View key={icon} style={[styles.mockNavDot, i === 0 && styles.mockNavDotActive]}>
+                  <MaterialCommunityIcons
+                    name={icon as any}
+                    size={11}
+                    color={i === 0 ? colors.brand : colors.muted}
+                  />
+                </View>
+              ))}
             </View>
-            <Text style={styles.mockCardTitle}>{t("landing.mockCardTitle")}</Text>
-            {listRows(3)}
+            <View style={styles.browserBody}>
+              <View style={styles.mockTopRow}>
+                <View style={styles.mockSearchPill} />
+                <View style={styles.mockTopIcons}>
+                  <MaterialCommunityIcons name="bell-outline" size={11} color={colors.muted} />
+                  <View style={styles.mockAvatarDot} />
+                </View>
+              </View>
+              <Text style={styles.mockGreeting}>{t("landing.mockGreeting")}</Text>
+              <View style={styles.mockStatRow}>
+                {statTile(t("landing.mockTotalLabel"), "Rp487rb", "total")}
+                {statTile(t("landing.mockUpcomingLabel"), "3", "upcoming")}
+                {statTile(t("landing.mockSavingsLabel"), "Rp247rb", "savings")}
+                {statTile(t("landing.mockActiveLabel"), "8", "active")}
+              </View>
+              <Text style={styles.mockCardTitle}>{t("landing.mockCardTitle")}</Text>
+              {listRows(3)}
+            </View>
           </View>
         </View>
       </View>
@@ -189,15 +223,24 @@ function HeroVisual({ isWide, t }: any) {
 
       {/* Phone surface — desktop only; on narrow screens the browser mock
           above already reads as "the app", a second overlapping frame would
-          just crowd a 360–414px viewport. */}
+          just crowd a 360–414px viewport. Mirrors the real mobile dashboard:
+          no search bar, stat cards wrap 2-up instead of sitting in a row. */}
       {isWide && (
         <View style={styles.phoneShell}>
           <View style={styles.phoneNotch} />
           <View style={styles.phoneScreen}>
-            <Text style={styles.phoneBrand}>Notifin</Text>
-            <View style={styles.phoneStatTile}>
-              <Text style={styles.mockStatLabel}>{t("landing.mockTotalLabel")}</Text>
-              <Text style={styles.phoneStatValue}>Rp487.000</Text>
+            <View style={styles.mockTopRow}>
+              <Text style={styles.phoneBrand}>Notifin</Text>
+              <View style={styles.mockTopIcons}>
+                <MaterialCommunityIcons name="bell-outline" size={11} color={colors.muted} />
+                <View style={styles.mockAvatarDot} />
+              </View>
+            </View>
+            <View style={styles.mockStatRow}>
+              {statTile(t("landing.mockTotalLabel"), "Rp487rb", "p-total")}
+              {statTile(t("landing.mockUpcomingLabel"), "3", "p-upcoming")}
+              {statTile(t("landing.mockSavingsLabel"), "Rp247rb", "p-savings")}
+              {statTile(t("landing.mockActiveLabel"), "8", "p-active")}
             </View>
             {listRows(2)}
             <View style={styles.phoneHomeBar} />
@@ -586,18 +629,58 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   browserUrlText: { fontFamily: font.medium, fontSize: 11, color: colors.muted },
-  browserBody: { padding: spacing.xl },
-  mockGreeting: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface, marginBottom: spacing.md },
-  mockStatRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg },
-  mockStatTile: {
-    flex: 1,
-    backgroundColor: colors.brandTertiary,
-    borderRadius: radius.md,
-    padding: spacing.md,
+
+  appShellRow: { flexDirection: "row", alignItems: "stretch" },
+  mockSidebar: {
+    width: 34,
+    backgroundColor: colors.surfaceTertiary,
+    alignItems: "center",
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
-  mockStatLabel: { fontFamily: font.semibold, fontSize: 11, color: colors.brandDark },
-  mockStatValue: { fontFamily: font.extrabold, fontSize: fontSize.lg, color: colors.onSurface, marginTop: 2 },
-  mockCardTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface, marginBottom: spacing.sm },
+  mockSidebarLogo: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    backgroundColor: colors.brand,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.xs,
+  },
+  mockNavDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mockNavDotActive: { backgroundColor: colors.surfaceSecondary },
+
+  browserBody: { flex: 1, padding: spacing.lg },
+  mockTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
+  mockSearchPill: {
+    flex: 1,
+    maxWidth: 100,
+    height: 13,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceTertiary,
+  },
+  mockTopIcons: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  mockAvatarDot: { width: 13, height: 13, borderRadius: 7, backgroundColor: colors.brandSecondary },
+
+  mockGreeting: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.onSurface, marginBottom: spacing.sm },
+  mockStatRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.md },
+  mockStatTile: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  mockStatLabel: { fontFamily: font.semibold, fontSize: 9, color: colors.brandDark },
+  mockStatValue: { fontFamily: font.extrabold, fontSize: fontSize.sm, color: colors.onSurface, marginTop: 1 },
+  mockCardTitle: { fontFamily: font.bold, fontSize: 11, color: colors.onSurface, marginBottom: spacing.sm },
   mockRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -613,9 +696,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: -22,
     bottom: -36,
-    width: 152,
+    width: 184,
     backgroundColor: "#0B1220",
-    borderRadius: 26,
+    borderRadius: 28,
     padding: 7,
     borderWidth: 3,
     borderColor: "#0B1220",
@@ -634,15 +717,13 @@ const styles = StyleSheet.create({
   },
   phoneScreen: {
     backgroundColor: colors.surfaceSecondary,
-    borderRadius: 20,
+    borderRadius: 22,
     paddingTop: 22,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     gap: spacing.sm,
   },
-  phoneBrand: { fontFamily: font.extrabold, fontSize: 11, color: colors.brand, marginBottom: 2 },
-  phoneStatTile: { backgroundColor: colors.brandTertiary, borderRadius: radius.sm, padding: spacing.sm },
-  phoneStatValue: { fontFamily: font.extrabold, fontSize: fontSize.base, color: colors.onSurface, marginTop: 1 },
+  phoneBrand: { fontFamily: font.extrabold, fontSize: 12, color: colors.brand },
   phoneHomeBar: {
     alignSelf: "center",
     width: 46,
