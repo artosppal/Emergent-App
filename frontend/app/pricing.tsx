@@ -8,7 +8,7 @@ import { useAuth } from "@/src/context/AuthContext";
 import { useUpgrade } from "@/src/context/UpgradeContext";
 import { useLanguage } from "@/src/context/LanguageContext";
 import { colors, font, fontSize, radius, spacing } from "@/src/theme";
-import { Nav, Footer, SectionHeading, sharedStyles } from "@/src/components/landing/shared";
+import { Nav, Footer, SectionHeading, FaqAccordion, sharedStyles } from "@/src/components/landing/shared";
 import { Pricing } from "@/src/components/landing/LandingPage";
 
 // Standalone, directly-linkable pricing page. Doubles as marketing content
@@ -50,7 +50,7 @@ export default function PricingPage() {
     { label: t("pricingPage.rowSummary"), free: false, premium: true },
   ];
 
-  const faqItems = [1, 2, 3, 4, 5].map((i) => ({
+  const faqItems = [1, 2, 3, 4, 5, 6, 7].map((i) => ({
     q: t(`pricingPage.faq${i}Q`),
     a: t(`pricingPage.faq${i}A`),
   }));
@@ -124,14 +124,7 @@ export default function PricingPage() {
         <View style={sharedStyles.sectionOuterAlt}>
           <View style={sharedStyles.sectionInner}>
             <SectionHeading eyebrow={t("pricingPage.faqEyebrow")} title={t("pricingPage.faqTitle")} />
-            <View style={styles.faqList}>
-              {faqItems.map((item) => (
-                <View key={item.q} style={styles.faqItem}>
-                  <Text style={styles.faqQ}>{item.q}</Text>
-                  <Text style={styles.faqA}>{item.a}</Text>
-                </View>
-              ))}
-            </View>
+            <FaqAccordion items={faqItems} />
           </View>
         </View>
 
@@ -226,15 +219,6 @@ const styles = StyleSheet.create({
   tableCellLabel: { flex: 1, fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface, paddingRight: spacing.sm },
   tableCellCol: { width: 84, alignItems: "center", justifyContent: "center" },
   tableValueText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.onSurface, textAlign: "center" },
-
-  faqList: { gap: spacing.lg },
-  faqItem: {
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-  },
-  faqQ: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface, marginBottom: spacing.xs },
-  faqA: { fontFamily: font.regular, fontSize: fontSize.base, color: colors.muted, lineHeight: 21 },
 
   ctaBanner: {
     backgroundColor: colors.brand,

@@ -775,6 +775,11 @@ export const translations = {
       faq5Q: "Perlu Premium buat gabung grup keluarga?",
       faq5A:
         "Enggak — siapa saja bisa gabung grup pakai kode undangan, di paket apa pun. Premium cuma dibutuhkan buat yang mau membuat grup barunya.",
+      faq6Q: "Apa itu Notifin?",
+      faq6A:
+        "Notifin adalah aplikasi buat ngelacak semua langganan digitalmu — Netflix, Spotify, dan lainnya — dalam satu tempat, ngingetin kamu sebelum jatuh tempo, dan bantu nemuin peluang hemat.",
+      faq7Q: "Apakah data saya aman?",
+      faq7A: "Aman. Data langgananmu privat dan terenkripsi — kami gak pernah menjual datamu ke pihak ketiga.",
 
       ctaTitle: "Siap Upgrade ke Premium?",
       ctaSubtitleLoggedOut: "Daftar dulu, baru pilih paket yang cocok buatmu.",
@@ -1581,6 +1586,11 @@ export const translations = {
       faq5Q: "Do I need Premium to join a family group?",
       faq5A:
         "No — anyone can join a group with an invite code, on any plan. Premium is only needed to create a new group.",
+      faq6Q: "What is Notifin?",
+      faq6A:
+        "Notifin is an app for tracking all your digital subscriptions — Netflix, Spotify, and more — in one place, reminding you before they're due, and helping you find ways to save.",
+      faq7Q: "Is my data safe?",
+      faq7A: "Yes. Your subscription data is private and encrypted — we never sell your data to third parties.",
 
       ctaTitle: "Ready to Upgrade to Premium?",
       ctaSubtitleLoggedOut: "Sign up first, then pick the plan that fits you.",

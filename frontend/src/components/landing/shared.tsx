@@ -1,7 +1,7 @@
 // Pieces shared between the marketing landing page and standalone pages
 // that reuse its chrome (e.g. the pricing page) — nav bar, section heading,
 // and footer, plus the layout styles they depend on.
-import React from "react";
+import React, { useState } from "react";
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors, font, fontSize, radius, spacing } from "@/src/theme";
@@ -119,6 +119,38 @@ export function Footer({ isTablet, router, t }: any) {
   );
 }
 
+// Shared accordion FAQ list — used on both the landing page's /faq page and
+// the /pricing page's FAQ section, so both stay in sync instead of each
+// keeping its own static (always-expanded) copy of the same questions.
+export function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
+  const [openIndex, setOpenIndex] = useState<number | null>(0);
+  return (
+    <View style={sharedStyles.faqList}>
+      {items.map((item, i) => {
+        const open = openIndex === i;
+        return (
+          <Pressable
+            key={item.q}
+            testID={`faq-item-${i}`}
+            onPress={() => setOpenIndex(open ? null : i)}
+            style={sharedStyles.faqItem}
+          >
+            <View style={sharedStyles.faqQRow}>
+              <Text style={sharedStyles.faqQ}>{item.q}</Text>
+              <MaterialCommunityIcons
+                name={open ? "chevron-up" : "chevron-down"}
+                size={20}
+                color={colors.muted}
+              />
+            </View>
+            {open && <Text style={sharedStyles.faqA}>{item.a}</Text>}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export const sharedStyles = StyleSheet.create({
   navBar: {
     borderBottomWidth: 1,
@@ -218,5 +250,21 @@ export const sharedStyles = StyleSheet.create({
     color: colors.muted,
     marginTop: spacing["2xl"],
     textAlign: "center",
+  },
+
+  faqList: { gap: spacing.md },
+  faqItem: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+  },
+  faqQRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  faqQ: { flex: 1, fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface },
+  faqA: {
+    fontFamily: font.regular,
+    fontSize: fontSize.base,
+    color: colors.muted,
+    lineHeight: 21,
+    marginTop: spacing.sm,
   },
 });
