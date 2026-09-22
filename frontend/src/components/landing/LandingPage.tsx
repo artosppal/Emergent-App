@@ -65,13 +65,15 @@ export function LandingPage() {
 
         <ProblemSection isWide={isWide} t={t} />
 
+        <View onLayout={registerSection("how")}>
+          <HowItWorks isWide={isWide} t={t} />
+        </View>
+
         <View onLayout={registerSection("features")}>
           <Features isWide={isWide} t={t} />
         </View>
 
-        <View onLayout={registerSection("how")}>
-          <HowItWorks isWide={isWide} t={t} />
-        </View>
+        <DashboardPreview isWide={isWide} t={t} onSignup={goRegister} />
 
         <View onLayout={registerSection("pricing")}>
           <Pricing isTablet={isTablet} onSignup={goRegister} t={t} />
@@ -210,6 +212,58 @@ function Features({ isWide, t }: any) {
               <Text style={styles.featureBody}>{it.body}</Text>
             </View>
           ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ---------------- Dashboard Preview (#05) ----------------
+function DashboardPreview({ isWide, t, onSignup }: any) {
+  const items = [
+    { icon: "view-grid-outline", tint: colors.brandTertiary, fg: colors.brand, title: t("landing.previewItem1Title"), body: t("landing.previewItem1Body") },
+    { icon: "chart-bar", tint: "#D1FAE5", fg: "#059669", title: t("landing.previewItem2Title"), body: t("landing.previewItem2Body") },
+    { icon: "lightbulb-on-outline", tint: "#FEF3C7", fg: "#D97706", title: t("landing.previewItem3Title"), body: t("landing.previewItem3Body") },
+    { icon: "bell-ring-outline", tint: "#FEE2E2", fg: "#EF4444", title: t("landing.previewItem4Title"), body: t("landing.previewItem4Body") },
+  ];
+  return (
+    <View style={sharedStyles.section}>
+      <View style={[styles.previewLayout, isWide && styles.previewLayoutWide]}>
+        <View style={[styles.previewText, isWide && { maxWidth: 460 }]}>
+          <View style={styles.eyebrow}>
+            <MaterialCommunityIcons name="view-dashboard-outline" size={14} color={colors.brandDark} />
+            <Text style={styles.eyebrowText}>{t("landing.previewEyebrow")}</Text>
+          </View>
+          <Text style={[styles.heroTitle, isWide && { fontSize: 36, lineHeight: 42 }]}>
+            {t("landing.previewTitlePart1")}
+            <Text style={{ color: colors.brand }}>{t("landing.previewTitleHighlight")}</Text>
+          </Text>
+          <Text style={styles.heroSubtitle}>{t("landing.previewSubtitle")}</Text>
+
+          <View style={styles.previewItemList}>
+            {items.map((it) => (
+              <View key={it.title} style={styles.previewItemRow}>
+                <View style={[styles.featureIcon, { backgroundColor: it.tint, marginBottom: 0, width: 44, height: 44 }]}>
+                  <MaterialCommunityIcons name={it.icon as any} size={20} color={it.fg} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.previewItemTitle}>{it.title}</Text>
+                  <Text style={styles.previewItemBody}>{it.body}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <Button title={t("landing.previewCta")} onPress={onSignup} testID="landing-preview-signup" />
+        </View>
+
+        <View style={[styles.heroVisualWrap, isWide && styles.heroVisualWrapWide]}>
+          <Image
+            source={HERO_MOCKUP}
+            style={[styles.heroMockupImage, { aspectRatio: HERO_MOCKUP_RATIO }]}
+            contentFit="contain"
+            accessibilityLabel={t("landing.heroMockupAlt")}
+          />
         </View>
       </View>
     </View>
@@ -437,6 +491,14 @@ const styles = StyleSheet.create({
   heroLayout: { flexDirection: "column", alignItems: "center" },
   heroLayoutWide: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing["3xl"] },
   heroText: { alignItems: "flex-start" },
+
+  previewLayout: { flexDirection: "column-reverse", alignItems: "center", gap: spacing.xl },
+  previewLayoutWide: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing["3xl"] },
+  previewText: { alignItems: "flex-start", width: "100%" },
+  previewItemList: { gap: spacing.lg, marginTop: spacing.xl, marginBottom: spacing.xl, alignSelf: "stretch" },
+  previewItemRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  previewItemTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
+  previewItemBody: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 2, lineHeight: 19 },
   eyebrow: {
     flexDirection: "row",
     alignItems: "center",

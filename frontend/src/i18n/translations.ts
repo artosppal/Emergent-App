@@ -612,6 +612,21 @@ export const translations = {
       feature6Title: "Aman & Terpercaya",
       feature6Body: "Data langgananmu privat dan terenkripsi, gak pernah dijual ke pihak ketiga.",
 
+      previewEyebrow: "PREVIEW DASHBOARD",
+      previewTitlePart1: "Dashboard Lengkap dalam ",
+      previewTitleHighlight: "Satu Tampilan",
+      previewSubtitle:
+        "Lihat semua langganan, pengeluaran, jadwal jatuh tempo, dan rekomendasi penghematan — dalam satu dashboard yang sederhana dan mudah dipahami.",
+      previewItem1Title: "Ringkasan Real-time",
+      previewItem1Body: "Total pengeluaran, langganan aktif, dan tagihan yang akan jatuh tempo.",
+      previewItem2Title: "Visual yang Mudah Dipahami",
+      previewItem2Body: "Grafik dan kategori buat lihat tren pengeluaranmu.",
+      previewItem3Title: "Rekomendasi Cerdas",
+      previewItem3Body: "Temukan langganan yang jarang dipakai dan peluang hemat.",
+      previewItem4Title: "Notifikasi Tepat Waktu",
+      previewItem4Body: "Dapatkan pengingat sebelum jatuh tempo lewat aplikasi, email, atau WhatsApp.",
+      previewCta: "Mulai Kelola Langganan Sekarang",
+
       howEyebrow: "CARA KERJA",
       howTitle: "Mulai dalam 4 Langkah",
       how1Title: "Tambah Langganan",
@@ -1345,6 +1360,21 @@ export const translations = {
         "Splitting Netflix or Spotify with friends? Divide the bill fairly and track who still owes their share.",
       feature6Title: "Private & Secure",
       feature6Body: "Your subscription data is encrypted and never sold to third parties.",
+
+      previewEyebrow: "DASHBOARD PREVIEW",
+      previewTitlePart1: "A Complete Dashboard, ",
+      previewTitleHighlight: "One Screen",
+      previewSubtitle:
+        "See every subscription, your spending, upcoming due dates, and savings recommendations — in one simple, easy-to-read dashboard.",
+      previewItem1Title: "Real-time Overview",
+      previewItem1Body: "Total spending, active subscriptions, and what's due soon.",
+      previewItem2Title: "Easy-to-Read Visuals",
+      previewItem2Body: "Charts and categories to spot your spending trends.",
+      previewItem3Title: "Smart Recommendations",
+      previewItem3Body: "Find subscriptions you barely use and ways to save.",
+      previewItem4Title: "Timely Notifications",
+      previewItem4Body: "Get reminded before every due date — via app, email, or WhatsApp.",
+      previewCta: "Start Managing Your Subscriptions",
 
       howEyebrow: "HOW IT WORKS",
       howTitle: "Get Started in 4 Steps",
