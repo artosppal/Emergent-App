@@ -75,6 +75,8 @@ export function LandingPage() {
 
         <DashboardPreview isWide={isWide} t={t} onSignup={goRegister} />
 
+        <SmartSaving isWide={isWide} t={t} />
+
         <View onLayout={registerSection("pricing")}>
           <Pricing isTablet={isTablet} onSignup={goRegister} t={t} />
         </View>
@@ -264,6 +266,60 @@ function DashboardPreview({ isWide, t, onSignup }: any) {
             contentFit="contain"
             accessibilityLabel={t("landing.heroMockupAlt")}
           />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ---------------- Smart Saving / Hemat (#06) ----------------
+// No dedicated landing reference image exists for this group (only the
+// in-app "#21 Hemat" screen does, and that's a full dashboard — too dense
+// to lift onto a marketing page). Built from the brief's text spec instead,
+// keeping every claim to what the app actually does today: real trial-
+// ending detection and real partner promos, not a "switch to a cheaper
+// plan" or "unused subscription" engine the app doesn't have yet.
+function SmartSaving({ isWide, t }: any) {
+  const points = [
+    { icon: "timer-sand", title: t("landing.savingPoint1Title"), body: t("landing.savingPoint1Body") },
+    { icon: "tag-heart-outline", title: t("landing.savingPoint2Title"), body: t("landing.savingPoint2Body") },
+    { icon: "account-group-outline", title: t("landing.savingPoint3Title"), body: t("landing.savingPoint3Body") },
+  ];
+  return (
+    <View style={sharedStyles.sectionOuterAlt}>
+      <View style={sharedStyles.sectionInner}>
+        <View style={[styles.savingLayout, isWide && styles.savingLayoutWide]}>
+          <View style={styles.savingStatCard}>
+            <MaterialCommunityIcons name="leaf" size={28} color={colors.onBrandPrimary} />
+            <Text style={styles.savingStatLabel}>{t("landing.savingStatLabel")}</Text>
+            <Text style={styles.savingStatValue}>Rp247.000</Text>
+            <Text style={styles.savingStatCaption}>{t("landing.savingStatCaption")}</Text>
+          </View>
+
+          <View style={[styles.savingText, isWide && { maxWidth: 480 }]}>
+            <View style={styles.eyebrow}>
+              <MaterialCommunityIcons name="leaf" size={14} color={colors.brandDark} />
+              <Text style={styles.eyebrowText}>{t("landing.savingEyebrow")}</Text>
+            </View>
+            <Text style={[styles.heroTitle, isWide && { fontSize: 36, lineHeight: 42 }]}>
+              {t("landing.savingTitle")}
+            </Text>
+            <Text style={styles.heroSubtitle}>{t("landing.savingSubtitle")}</Text>
+
+            <View style={styles.previewItemList}>
+              {points.map((it) => (
+                <View key={it.title} style={styles.previewItemRow}>
+                  <View style={[styles.featureIcon, { backgroundColor: "#D1FAE5", marginBottom: 0, width: 44, height: 44 }]}>
+                    <MaterialCommunityIcons name={it.icon as any} size={20} color="#059669" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.previewItemTitle}>{it.title}</Text>
+                    <Text style={styles.previewItemBody}>{it.body}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
         </View>
       </View>
     </View>
@@ -499,6 +555,31 @@ const styles = StyleSheet.create({
   previewItemRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
   previewItemTitle: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
   previewItemBody: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 2, lineHeight: 19 },
+
+  savingLayout: { flexDirection: "column", alignItems: "center", gap: spacing.xl },
+  savingLayoutWide: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing["3xl"] },
+  savingText: { alignItems: "flex-start", width: "100%" },
+  savingStatCard: {
+    width: 220,
+    backgroundColor: colors.brand,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    alignItems: "flex-start",
+    ...shadow.card,
+  },
+  savingStatLabel: {
+    fontFamily: font.semibold,
+    fontSize: fontSize.sm,
+    color: "rgba(255,255,255,0.85)",
+    marginTop: spacing.md,
+  },
+  savingStatValue: { fontFamily: font.extrabold, fontSize: 34, color: "#FFFFFF", marginTop: 4 },
+  savingStatCaption: {
+    fontFamily: font.medium,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.75)",
+    marginTop: spacing.sm,
+  },
   eyebrow: {
     flexDirection: "row",
     alignItems: "center",

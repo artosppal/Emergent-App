@@ -627,6 +627,20 @@ export const translations = {
       previewItem4Body: "Dapatkan pengingat sebelum jatuh tempo lewat aplikasi, email, atau WhatsApp.",
       previewCta: "Mulai Kelola Langganan Sekarang",
 
+      savingEyebrow: "SMART SAVING",
+      savingTitle: "Notifin Gak Cuma Ingetin, Tapi Juga Bantu Kamu Hemat",
+      savingSubtitle:
+        "Banyak orang gak sadar udah bayar buat langganan yang sebenarnya bisa dihindari. Notifin bantu kamu nemuin itu sebelum kejadian.",
+      savingStatLabel: "Contoh Potensi Hemat",
+      savingStatCaption: "berdasarkan pola langganan yang umum",
+      savingPoint1Title: "Cancel Trial Tepat Waktu",
+      savingPoint1Body:
+        "Dapat pengingat sebelum trial gratis berubah jadi tagihan, jadi kamu yang nentuin lanjut atau enggak.",
+      savingPoint2Title: "Promo & Cashback Partner",
+      savingPoint2Body: "Akses diskon dan cashback eksklusif dari partner kami buat langganan yang kamu pakai.",
+      savingPoint3Title: "Patungan Bareng Keluarga",
+      savingPoint3Body: "Bagi biaya langganan secara adil bareng keluarga atau teman lewat fitur Groups.",
+
       howEyebrow: "CARA KERJA",
       howTitle: "Mulai dalam 4 Langkah",
       how1Title: "Tambah Langganan",
@@ -1375,6 +1389,20 @@ export const translations = {
       previewItem4Title: "Timely Notifications",
       previewItem4Body: "Get reminded before every due date — via app, email, or WhatsApp.",
       previewCta: "Start Managing Your Subscriptions",
+
+      savingEyebrow: "SMART SAVING",
+      savingTitle: "Notifin Doesn't Just Remind You — It Helps You Save",
+      savingSubtitle:
+        "A lot of people don't realize they're paying for subscriptions they could easily avoid. Notifin helps you catch that before it happens.",
+      savingStatLabel: "Example Potential Savings",
+      savingStatCaption: "based on typical subscription patterns",
+      savingPoint1Title: "Cancel Trials in Time",
+      savingPoint1Body:
+        "Get reminded before a free trial turns into a bill, so you're the one who decides what happens next.",
+      savingPoint2Title: "Partner Promos & Cashback",
+      savingPoint2Body: "Get exclusive discounts and cashback from our partners for the subscriptions you already use.",
+      savingPoint3Title: "Split Costs With Family",
+      savingPoint3Body: "Share subscription costs fairly with family or friends using the Groups feature.",
 
       howEyebrow: "HOW IT WORKS",
       howTitle: "Get Started in 4 Steps",
