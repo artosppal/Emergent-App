@@ -657,6 +657,19 @@ export const translations = {
       groupsSampleCostLabel: "Total per bulan",
       groupsSampleShareLabel: "Bagianmu",
 
+      analyticsEyebrow: "SMART MONEY",
+      analyticsTitle: "Kontrol Pengeluaran, Raih Masa Depan yang Lebih Baik",
+      analyticsSubtitle:
+        "Lihat semua pengeluaran langgananmu dalam satu tempat, hindari tagihan yang gak perlu, dan temukan peluang hemat.",
+      analyticsItem1Title: "Rincian per Kategori",
+      analyticsItem1Body: "Lihat pengeluaran langganan dikelompokkan per kategori, biar tau ke mana aja uangmu pergi.",
+      analyticsItem2Title: "Pantau Tren Bulanan",
+      analyticsItem2Body: "Bandingkan pengeluaran bulan ini dengan bulan-bulan sebelumnya lewat grafik riwayat.",
+      analyticsItem3Title: "Hindari Tagihan Gak Perlu",
+      analyticsItem3Body: "Dapat pengingat sebelum jatuh tempo, jadi kamu yang mutusin lanjut atau cancel.",
+      analyticsItem4Title: "Atur Limit Bulanan",
+      analyticsItem4Body: "Pasang batas pengeluaran dan dapat peringatan kalau udah mendekati limit.",
+
       howEyebrow: "CARA KERJA",
       howTitle: "Mulai dalam 4 Langkah",
       how1Title: "Tambah Langganan",
@@ -1435,6 +1448,19 @@ export const translations = {
       groupsSampleMeta: "4 members",
       groupsSampleCostLabel: "Total per month",
       groupsSampleShareLabel: "Your share",
+
+      analyticsEyebrow: "SMART MONEY",
+      analyticsTitle: "Take Control of Spending, Build a Better Future",
+      analyticsSubtitle:
+        "See all your subscription spending in one place, avoid bills you don't need, and find ways to save.",
+      analyticsItem1Title: "Breakdown by Category",
+      analyticsItem1Body: "See your subscription spending grouped by category, so you know exactly where your money goes.",
+      analyticsItem2Title: "Track Monthly Trends",
+      analyticsItem2Body: "Compare this month's spending against previous months with a real history chart.",
+      analyticsItem3Title: "Avoid Unnecessary Bills",
+      analyticsItem3Body: "Get reminded before every due date, so you're the one who decides what happens next.",
+      analyticsItem4Title: "Set a Monthly Limit",
+      analyticsItem4Body: "Set a spending cap and get warned when you're getting close to it.",
 
       howEyebrow: "HOW IT WORKS",
       howTitle: "Get Started in 4 Steps",

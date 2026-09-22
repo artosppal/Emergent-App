@@ -79,6 +79,8 @@ export function LandingPage() {
 
         <GroupsSection isWide={isWide} t={t} onGroups={goRegister} />
 
+        <AnalyticsSection isWide={isWide} t={t} />
+
         <View onLayout={registerSection("pricing")}>
           <Pricing isTablet={isTablet} onSignup={goRegister} t={t} />
         </View>
@@ -398,6 +400,44 @@ function GroupsSection({ isWide, t, onGroups }: any) {
               <Text style={[styles.groupCardRowValue, { color: colors.brand }]}>Rp47.000</Text>
             </View>
           </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ---------------- Analytics / Laporan (#08) ----------------
+// Reference is another full hero-style composite (own nav/headline/laptop
+// mockup showing a "Keuangan" tab) — the app has no separate "Keuangan"
+// screen, that's all part of the one Dashboard, so no new mockup image is
+// introduced here (Hero and #05 already show the real dashboard). Headline
+// carried over from the reference (honest, no overclaim); the 4 points are
+// swapped for ones grounded in real shipped features — category totals,
+// the real spending-history screen, due-date reminders, and the real
+// monthly-limit setting — instead of the reference's more generic "hit
+// your financial goals faster" framing.
+function AnalyticsSection({ isWide, t }: any) {
+  const items = [
+    { icon: "chart-donut", tint: colors.brandTertiary, fg: colors.brand, title: t("landing.analyticsItem1Title"), body: t("landing.analyticsItem1Body") },
+    { icon: "chart-timeline-variant", tint: "#DBEAFE", fg: "#2563EB", title: t("landing.analyticsItem2Title"), body: t("landing.analyticsItem2Body") },
+    { icon: "calendar-remove-outline", tint: "#FEE2E2", fg: "#EF4444", title: t("landing.analyticsItem3Title"), body: t("landing.analyticsItem3Body") },
+    { icon: "gauge", tint: "#FEF3C7", fg: "#D97706", title: t("landing.analyticsItem4Title"), body: t("landing.analyticsItem4Body") },
+  ];
+  return (
+    <View style={sharedStyles.sectionOuterAlt}>
+      <View style={sharedStyles.sectionInner}>
+        <SectionHeading eyebrow={t("landing.analyticsEyebrow")} title={t("landing.analyticsTitle")} />
+        <Text style={styles.problemSubtitle}>{t("landing.analyticsSubtitle")}</Text>
+        <View style={styles.featuresGrid}>
+          {items.map((it) => (
+            <View key={it.title} style={[styles.featureCard, styles.featureCardWide2]}>
+              <View style={[styles.featureIcon, { backgroundColor: it.tint }]}>
+                <MaterialCommunityIcons name={it.icon as any} size={24} color={it.fg} />
+              </View>
+              <Text style={styles.featureTitle}>{it.title}</Text>
+              <Text style={styles.featureBody}>{it.body}</Text>
+            </View>
+          ))}
         </View>
       </View>
     </View>
