@@ -77,6 +77,8 @@ export function LandingPage() {
 
         <SmartSaving isWide={isWide} t={t} />
 
+        <GroupsSection isWide={isWide} t={t} onGroups={goRegister} />
+
         <View onLayout={registerSection("pricing")}>
           <Pricing isTablet={isTablet} onSignup={goRegister} t={t} />
         </View>
@@ -318,6 +320,82 @@ function SmartSaving({ isWide, t }: any) {
                   </View>
                 </View>
               ))}
+            </View>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ---------------- Groups / Patungan (#07) ----------------
+// Same situation as #06: no dedicated landing reference exists, only the
+// in-app "#20 Groups" screen (a full dashboard, not a marketing section).
+// Built from the brief's text spec — family, friends, cost-splitting,
+// members, total savings, "Buat Group" CTA — using the real Groups
+// feature that already ships (create/join by code, split bills, track
+// who's paid), with a small group-card mockup instead of a bitmap.
+function GroupsSection({ isWide, t, onGroups }: any) {
+  const members = ["A", "B", "C", "+1"];
+  const points = [
+    { icon: "account-multiple-plus-outline", title: t("landing.groupsPoint1Title"), body: t("landing.groupsPoint1Body") },
+    { icon: "call-split", title: t("landing.groupsPoint2Title"), body: t("landing.groupsPoint2Body") },
+    { icon: "check-circle-outline", title: t("landing.groupsPoint3Title"), body: t("landing.groupsPoint3Body") },
+  ];
+  return (
+    <View style={sharedStyles.section}>
+      <View style={[styles.previewLayout, isWide && styles.previewLayoutWide]}>
+        <View style={[styles.previewText, isWide && { maxWidth: 460 }]}>
+          <View style={styles.eyebrow}>
+            <MaterialCommunityIcons name="account-group-outline" size={14} color={colors.brandDark} />
+            <Text style={styles.eyebrowText}>{t("landing.groupsEyebrow")}</Text>
+          </View>
+          <Text style={[styles.heroTitle, isWide && { fontSize: 36, lineHeight: 42 }]}>{t("landing.groupsTitle")}</Text>
+          <Text style={styles.heroSubtitle}>{t("landing.groupsSubtitle")}</Text>
+
+          <View style={styles.previewItemList}>
+            {points.map((it) => (
+              <View key={it.title} style={styles.previewItemRow}>
+                <View style={[styles.featureIcon, { backgroundColor: "#EDE9FE", marginBottom: 0, width: 44, height: 44 }]}>
+                  <MaterialCommunityIcons name={it.icon as any} size={20} color="#7C3AED" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.previewItemTitle}>{it.title}</Text>
+                  <Text style={styles.previewItemBody}>{it.body}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <Button title={t("landing.groupsCta")} onPress={onGroups} icon="account-group" testID="landing-groups-cta" />
+        </View>
+
+        <View style={[styles.heroVisualWrap, isWide && { maxWidth: 380 }]}>
+          <View style={styles.groupCard}>
+            <View style={styles.groupCardHead}>
+              <View style={styles.groupCardIcon}>
+                <MaterialCommunityIcons name="home-group" size={18} color="#7C3AED" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.groupCardName}>{t("landing.groupsSampleName")}</Text>
+                <Text style={styles.groupCardMeta}>{t("landing.groupsSampleMeta")}</Text>
+              </View>
+            </View>
+            <View style={styles.groupCardAvatars}>
+              {members.map((m, i) => (
+                <View key={m} style={[styles.groupAvatar, i > 0 && { marginLeft: -10 }]}>
+                  <Text style={styles.groupAvatarText}>{m}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={styles.groupCardDivider} />
+            <View style={styles.groupCardRow}>
+              <Text style={styles.groupCardRowLabel}>{t("landing.groupsSampleCostLabel")}</Text>
+              <Text style={styles.groupCardRowValue}>Rp186.000</Text>
+            </View>
+            <View style={styles.groupCardRow}>
+              <Text style={styles.groupCardRowLabel}>{t("landing.groupsSampleShareLabel")}</Text>
+              <Text style={[styles.groupCardRowValue, { color: colors.brand }]}>Rp47.000</Text>
             </View>
           </View>
         </View>
@@ -580,6 +658,43 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.75)",
     marginTop: spacing.sm,
   },
+
+  groupCard: {
+    width: "100%",
+    maxWidth: 320,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    ...shadow.card,
+  },
+  groupCardHead: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.lg },
+  groupCardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: "#EDE9FE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  groupCardName: { fontFamily: font.bold, fontSize: fontSize.lg, color: colors.onSurface },
+  groupCardMeta: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted, marginTop: 1 },
+  groupCardAvatars: { flexDirection: "row", marginBottom: spacing.lg },
+  groupAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.brandSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: colors.surfaceSecondary,
+  },
+  groupAvatarText: { fontFamily: font.bold, fontSize: fontSize.sm, color: colors.onBrandSecondary },
+  groupCardDivider: { height: 1, backgroundColor: colors.divider, marginBottom: spacing.md },
+  groupCardRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.sm },
+  groupCardRowLabel: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.muted },
+  groupCardRowValue: { fontFamily: font.bold, fontSize: fontSize.base, color: colors.onSurface },
+
   eyebrow: {
     flexDirection: "row",
     alignItems: "center",
