@@ -216,22 +216,35 @@ function Features({ isWide, t }: any) {
 // ---------------- How it works ----------------
 function HowItWorks({ isWide, t }: any) {
   const steps = [
-    { title: t("landing.how1Title"), body: t("landing.how1Body") },
-    { title: t("landing.how2Title"), body: t("landing.how2Body") },
-    { title: t("landing.how3Title"), body: t("landing.how3Body") },
+    { icon: "playlist-plus", title: t("landing.how1Title"), body: t("landing.how1Body") },
+    { icon: "calendar-clock-outline", title: t("landing.how2Title"), body: t("landing.how2Body") },
+    { icon: "bell-ring-outline", title: t("landing.how3Title"), body: t("landing.how3Body") },
+    { icon: "chart-line", title: t("landing.how4Title"), body: t("landing.how4Body") },
   ];
   return (
     <View style={sharedStyles.section}>
       <SectionHeading eyebrow={t("landing.howEyebrow")} title={t("landing.howTitle")} />
-      <View style={[styles.cardGrid, isWide && styles.cardGridWide]}>
+      <View style={[styles.cardGrid, isWide && styles.howGridWide]}>
         {steps.map((s, i) => (
-          <View key={s.title} style={[styles.stepCard, isWide && styles.featureCardWide]}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>{i + 1}</Text>
+          <React.Fragment key={s.title}>
+            <View style={[styles.stepCard, isWide && styles.featureCardWide]}>
+              <View style={styles.stepTopRow}>
+                <View style={styles.stepNumber}>
+                  <Text style={styles.stepNumberText}>{i + 1}</Text>
+                </View>
+                <View style={[styles.featureIcon, { width: 40, height: 40, marginBottom: 0 }]}>
+                  <MaterialCommunityIcons name={s.icon as any} size={20} color={colors.brand} />
+                </View>
+              </View>
+              <Text style={styles.featureTitle}>{s.title}</Text>
+              <Text style={styles.featureBody}>{s.body}</Text>
             </View>
-            <Text style={styles.featureTitle}>{s.title}</Text>
-            <Text style={styles.featureBody}>{s.body}</Text>
-          </View>
+            {isWide && i < steps.length - 1 && (
+              <View style={styles.stepArrowWrap}>
+                <MaterialCommunityIcons name="arrow-right" size={20} color={colors.borderStrong} />
+              </View>
+            )}
+          </React.Fragment>
         ))}
       </View>
     </View>
@@ -514,16 +527,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  stepTopRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.lg },
   stepNumber: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: colors.brand,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.lg,
   },
-  stepNumberText: { fontFamily: font.extrabold, fontSize: fontSize.lg, color: colors.onBrandPrimary },
+  stepNumberText: { fontFamily: font.extrabold, fontSize: fontSize.base, color: colors.onBrandPrimary },
+
+  // 4-step "Cara Kerja" row: tighter gap than the generic cardGridWide so all
+  // 4 cards + connecting arrows fit one row at typical desktop widths.
+  howGridWide: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  stepArrowWrap: { paddingTop: 60 },
 
   pricingRow: { flexDirection: "column", gap: spacing.lg },
   pricingRowWide: { flexDirection: "row", alignItems: "stretch", gap: spacing.xl },
