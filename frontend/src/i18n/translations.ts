@@ -595,15 +595,22 @@ export const translations = {
 
       featuresEyebrow: "FITUR UTAMA",
       featuresTitle: "Semua yang Kamu Butuhkan Biar Gak Boncos",
-      feature1Title: "Pengingat Sebelum Kelewat",
+      feature1Title: "Pengingat Otomatis",
       feature1Body:
-        "Dapat notifikasi H-3, H-1, dan di hari-H sebelum jatuh tempo, jadi gak ada lagi trial yang lupa dibatalkan atau tagihan dadakan.",
-      feature2Title: "Dashboard Pengeluaran",
+        "Dapat notifikasi H-3, H-1, dan di hari-H sebelum jatuh tempo, lewat aplikasi, email, atau WhatsApp.",
+      feature2Title: "Kelola Semua Langganan",
       feature2Body:
-        "Lihat total bulanan, proyeksi ke depan, dan rincian pengeluaran per kategori dalam satu layar.",
-      feature3Title: "Berbagi Bareng Keluarga",
+        "Masukkan semua langgananmu — streaming, software, sampai aplikasi kerja — dalam satu tempat.",
+      feature3Title: "Analisis Pengeluaran",
       feature3Body:
+        "Lihat total bulanan, proyeksi ke depan, dan rincian pengeluaran per kategori dalam satu layar.",
+      feature4Title: "Rekomendasi & Promo",
+      feature4Body: "Dapatkan rekomendasi promo dan penawaran dari partner kami buat langgananmu.",
+      feature5Title: "Patungan Bareng Keluarga",
+      feature5Body:
         "Patungan Netflix atau Spotify bareng teman? Bagi tagihan secara adil dan pantau siapa yang belum bayar.",
+      feature6Title: "Aman & Terpercaya",
+      feature6Body: "Data langgananmu privat dan terenkripsi, gak pernah dijual ke pihak ketiga.",
 
       howEyebrow: "CARA KERJA",
       howTitle: "Mulai dalam 4 Langkah",
@@ -1322,15 +1329,22 @@ export const translations = {
 
       featuresEyebrow: "KEY FEATURES",
       featuresTitle: "Everything You Need to Stop Overspending",
-      feature1Title: "Reminders Before You Miss Them",
+      feature1Title: "Automatic Reminders",
       feature1Body:
-        "Get notified 3 days before, 1 day before, and on the due date, so no more forgotten trials or surprise charges.",
-      feature2Title: "Spending Dashboard",
+        "Get notified 3 days before, 1 day before, and on the due date — via app, email, or WhatsApp.",
+      feature2Title: "Manage Every Subscription",
       feature2Body:
-        "See your monthly total, upcoming projection, and spending breakdown by category in one screen.",
-      feature3Title: "Share With Family",
+        "Log everything you're subscribed to — streaming, software, and work apps alike — in one place.",
+      feature3Title: "Spending Analytics",
       feature3Body:
+        "See your monthly total, upcoming projection, and spending breakdown by category in one screen.",
+      feature4Title: "Recommendations & Promos",
+      feature4Body: "Get curated promos and offers from our partners for your subscriptions.",
+      feature5Title: "Split With Family",
+      feature5Body:
         "Splitting Netflix or Spotify with friends? Divide the bill fairly and track who still owes their share.",
+      feature6Title: "Private & Secure",
+      feature6Body: "Your subscription data is encrypted and never sold to third parties.",
 
       howEyebrow: "HOW IT WORKS",
       howTitle: "Get Started in 4 Steps",

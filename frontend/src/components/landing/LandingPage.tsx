@@ -189,19 +189,22 @@ function ProblemSection({ isWide, t }: any) {
 // ---------------- Features ----------------
 function Features({ isWide, t }: any) {
   const items = [
-    { icon: "bell-ring", title: t("landing.feature1Title"), body: t("landing.feature1Body") },
-    { icon: "view-dashboard", title: t("landing.feature2Title"), body: t("landing.feature2Body") },
-    { icon: "account-group", title: t("landing.feature3Title"), body: t("landing.feature3Body") },
+    { icon: "calendar-alert-outline", tint: "#FEE2E2", fg: "#EF4444", title: t("landing.feature1Title"), body: t("landing.feature1Body") },
+    { icon: "credit-card-multiple-outline", tint: colors.brandTertiary, fg: colors.brand, title: t("landing.feature2Title"), body: t("landing.feature2Body") },
+    { icon: "chart-line", tint: "#D1FAE5", fg: "#059669", title: t("landing.feature3Title"), body: t("landing.feature3Body") },
+    { icon: "tag-heart-outline", tint: "#FEF3C7", fg: "#D97706", title: t("landing.feature4Title"), body: t("landing.feature4Body") },
+    { icon: "account-group-outline", tint: "#EDE9FE", fg: "#7C3AED", title: t("landing.feature5Title"), body: t("landing.feature5Body") },
+    { icon: "shield-check-outline", tint: "#CCFBF1", fg: "#0D9488", title: t("landing.feature6Title"), body: t("landing.feature6Body") },
   ];
   return (
     <View style={sharedStyles.sectionOuterAlt}>
       <View style={sharedStyles.sectionInner}>
         <SectionHeading eyebrow={t("landing.featuresEyebrow")} title={t("landing.featuresTitle")} />
-        <View style={[styles.cardGrid, isWide && styles.cardGridWide]}>
+        <View style={styles.featuresGrid}>
           {items.map((it) => (
-            <View key={it.title} style={[styles.featureCard, isWide && styles.featureCardWide]}>
-              <View style={styles.featureIcon}>
-                <MaterialCommunityIcons name={it.icon as any} size={26} color={colors.brand} />
+            <View key={it.title} style={[styles.featureCard, isWide ? styles.painCardWide : styles.featureCardWide2]}>
+              <View style={[styles.featureIcon, { backgroundColor: it.tint }]}>
+                <MaterialCommunityIcons name={it.icon as any} size={24} color={it.fg} />
               </View>
               <Text style={styles.featureTitle}>{it.title}</Text>
               <Text style={styles.featureBody}>{it.body}</Text>
@@ -501,6 +504,11 @@ const styles = StyleSheet.create({
   painGrid: { flexDirection: "column", gap: spacing.lg },
   painGridWide: { flexDirection: "row", flexWrap: "wrap", gap: spacing.lg },
   painCardWide: { flexBasis: "31%", flexGrow: 0 },
+
+  // 6 feature cards: 2-up even on mobile (they're short enough not to feel
+  // cramped), 3-up on wide via the shared painCardWide flexBasis.
+  featuresGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+  featureCardWide2: { flexBasis: "47%", flexGrow: 0 },
   featureCard: {
     backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.lg,
