@@ -81,6 +81,8 @@ export function LandingPage() {
 
         <AnalyticsSection isWide={isWide} t={t} />
 
+        <RecommendationSection isWide={isWide} t={t} onSignup={goRegister} />
+
         <View onLayout={registerSection("pricing")}>
           <Pricing isTablet={isTablet} onSignup={goRegister} t={t} />
         </View>
@@ -439,6 +441,46 @@ function AnalyticsSection({ isWide, t }: any) {
             </View>
           ))}
         </View>
+      </View>
+    </View>
+  );
+}
+
+// ---------------- Rekomendasi / Affiliate (#09) ----------------
+// The full composite for this group turned up mis-filed under "04 Fitur"
+// (its PC version) — matched here against the correctly-filed mobile
+// image, same "Rekomendasi Cerdas" content. Headline/subtitle/benefit
+// cards carried over close to verbatim (honest, matches the real promo-
+// recommendation feature already in the dashboard). Skipped the
+// reference's sample promo list (Netflix/Spotify/Canva with specific
+// cashback %) — those are real admin-curated partner deals that change,
+// not fixed demo data, so making up percentages for them would be a
+// fabricated claim rather than the consistent sample data the brief
+// allows for things like prices and due dates.
+function RecommendationSection({ isWide, t, onSignup }: any) {
+  const items = [
+    { icon: "magnify", tint: "#D1FAE5", fg: "#059669", title: t("landing.recommendItem1Title"), body: t("landing.recommendItem1Body") },
+    { icon: "tag-outline", tint: "#EDE9FE", fg: "#7C3AED", title: t("landing.recommendItem2Title"), body: t("landing.recommendItem2Body") },
+    { icon: "shield-check-outline", tint: "#FEF3C7", fg: "#D97706", title: t("landing.recommendItem3Title"), body: t("landing.recommendItem3Body") },
+    { icon: "heart-outline", tint: "#FEE2E2", fg: "#EF4444", title: t("landing.recommendItem4Title"), body: t("landing.recommendItem4Body") },
+  ];
+  return (
+    <View style={sharedStyles.section}>
+      <SectionHeading eyebrow={t("landing.recommendEyebrow")} title={t("landing.recommendTitle")} />
+      <Text style={styles.problemSubtitle}>{t("landing.recommendSubtitle")}</Text>
+      <View style={styles.featuresGrid}>
+        {items.map((it) => (
+          <View key={it.title} style={[styles.featureCard, styles.featureCardWide2]}>
+            <View style={[styles.featureIcon, { backgroundColor: it.tint }]}>
+              <MaterialCommunityIcons name={it.icon as any} size={24} color={it.fg} />
+            </View>
+            <Text style={styles.featureTitle}>{it.title}</Text>
+            <Text style={styles.featureBody}>{it.body}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={{ alignItems: "center", marginTop: spacing.xl }}>
+        <Button title={t("landing.recommendCta")} onPress={onSignup} testID="landing-recommend-signup" />
       </View>
     </View>
   );

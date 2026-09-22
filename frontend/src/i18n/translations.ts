@@ -670,6 +670,20 @@ export const translations = {
       analyticsItem4Title: "Atur Limit Bulanan",
       analyticsItem4Body: "Pasang batas pengeluaran dan dapat peringatan kalau udah mendekati limit.",
 
+      recommendEyebrow: "REKOMENDASI CERDAS",
+      recommendTitle: "Temukan Layanan Terbaik untuk Kebutuhanmu",
+      recommendSubtitle:
+        "Notifin gak cuma ngingetin, tapi juga kasih rekomendasi promo dan penawaran dari partner kami — sesuai langganan yang kamu punya.",
+      recommendItem1Title: "Rekomendasi Personal",
+      recommendItem1Body: "Dapat rekomendasi yang relevan sama langganan dan kebutuhanmu.",
+      recommendItem2Title: "Penawaran Eksklusif",
+      recommendItem2Body: "Akses diskon dan cashback khusus dari partner kami.",
+      recommendItem3Title: "Terpercaya & Aman",
+      recommendItem3Body: "Cuma kerja sama dengan partner resmi dan terpercaya.",
+      recommendItem4Title: "Hidup Lebih Praktis",
+      recommendItem4Body: "Semua kebutuhan langganan digitalmu, dalam satu tempat.",
+      recommendCta: "Mulai Sekarang, Gratis",
+
       howEyebrow: "CARA KERJA",
       howTitle: "Mulai dalam 4 Langkah",
       how1Title: "Tambah Langganan",
@@ -1461,6 +1475,20 @@ export const translations = {
       analyticsItem3Body: "Get reminded before every due date, so you're the one who decides what happens next.",
       analyticsItem4Title: "Set a Monthly Limit",
       analyticsItem4Body: "Set a spending cap and get warned when you're getting close to it.",
+
+      recommendEyebrow: "SMART RECOMMENDATIONS",
+      recommendTitle: "Find the Best Services for Your Needs",
+      recommendSubtitle:
+        "Notifin doesn't just remind you — it also recommends promos and offers from our partners, matched to the subscriptions you already have.",
+      recommendItem1Title: "Personal Recommendations",
+      recommendItem1Body: "Get suggestions relevant to your subscriptions and needs.",
+      recommendItem2Title: "Exclusive Offers",
+      recommendItem2Body: "Access discounts and cashback exclusive to our partners.",
+      recommendItem3Title: "Trusted & Secure",
+      recommendItem3Body: "We only work with official, trusted partners.",
+      recommendItem4Title: "A Simpler Digital Life",
+      recommendItem4Body: "Everything you need for your digital subscriptions, in one place.",
+      recommendCta: "Get Started, Free",
 
       howEyebrow: "HOW IT WORKS",
       howTitle: "Get Started in 4 Steps",
